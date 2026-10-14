@@ -17,6 +17,7 @@ TikZ Bench is an independently maintained derivative of [TikZ Editor](https://gi
 - Local projects with automatic saving; TeX, SVG, PNG and PDF export.
 - Same-origin MathJax formulas and local LaTeX / Chinese XeLaTeX compilation.
 - New Computer Modern and STIX2 math fonts are bundled for offline use.
+- A read-only fast-canvas / real-TeX overlay, with shared coordinates, opacity controls and per-object geometry, text, baseline and anchor differences.
 - `\llbracket` and `\rrbracket`, including scalable `\left…\right` forms. The source panel's **Packages** dialog edits document package declarations and checks whether packages are installed in the existing TeX Live.
 - Example matrices, flowcharts, plots and circuits. Advanced Forest, PGFPlots and Circuitikz code uses local TeX compilation; direct canvas editing depends on supported syntax.
 
@@ -77,6 +78,8 @@ There is no database/schema change and no need to uninstall first. Check `curl -
 Run `node --import tsx scripts/verify-tex-text.mts` in the source checkout on the target Ubuntu system to verify actual double-bracket glyphs, local text dimensions, cache reuse, and a Chinese XeLaTeX PDF. Browser and unit checks do not replace that TeX Live 2026 check.
 
 Programs: `/opt/tikz-bench/releases/`. Configuration: `/etc/default/tikz-bench`. Default database: `/var/lib/tikz-bench/tikz-bench.sqlite`. The service listens on `127.0.0.1:5173` by default.
+
+Open **TeX 对照** above the source editor to compare the active picture's current draft with local TeX. Switch between overlay, fast canvas and TeX, adjust opacity, pan/zoom, and select a difference row to highlight or locate its object. Alignment uses three TeX world-coordinate markers, preserving physical scale rather than fitting the two bounding boxes. Measurements use pt and a configurable tolerance; missing mappings show “—”. The view never writes comparison markers to your source. If the draft changes while it is open, it keeps the captured snapshot and disables locating old objects. Geometry bounds include arrow paths but exclude stroke expansion; this is not a pixel-perfect diff. On the target system, run `node --import tsx scripts/verify-tex-comparison.mts` to check real TeX marker delivery, then visually check alignment in the browser. Real TeX Live 2026 validation remains pending on this development machine.
 
 ## Development
 

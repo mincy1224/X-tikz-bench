@@ -1,0 +1,24 @@
+.dialog { width: min(1120px, 94vw); max-height: 92vh; }
+.content { display: flex; flex-direction: column; gap: 10px; min-width: 0; color: var(--text); font-size: 12px; }
+.note { margin: 0; color: var(--text-muted); line-height: 1.5; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tools label { display: inline-flex; align-items: center; gap: 5px; }
+.tools button, .table button { cursor: pointer; border: 1px solid var(--border); padding: 5px 8px; border-radius: 4px; background: var(--bg-pane); color: var(--text); }
+.tools button[aria-pressed="true"] { border-color: #2563eb; background: color-mix(in srgb, #2563eb 15%, var(--bg-pane)); }
+.tools input[type="number"] { width: 55px; }
+.tools input[type="search"] { min-width: 130px; flex: 1; }
+.tools input:not([type="checkbox"]):not([type="range"]) { background: var(--bg-pane); color: var(--text); border: 1px solid var(--border); padding: 5px; border-radius: 4px; }
+.status { color: var(--text-muted); }
+.warning { margin: 0; border-left: 3px solid #d97706; padding: 7px 10px; background: var(--bg-pane); white-space: pre-wrap; overflow-wrap: anywhere; }
+.stage { height: clamp(220px, 36vh, 370px); background: white; color: #334155; border: 1px solid var(--border); display: grid; place-items: center; overflow: hidden; }
+.stage > svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; user-select: none; }
+.stage > svg:active { cursor: grabbing; }
+.table { overflow: auto; max-height: 190px; border: 1px solid var(--border); }
+.table table { width: 100%; border-collapse: collapse; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.table th, .table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.table th { position: sticky; top: 0; background: var(--bg-pane); z-index: 1; }
+.table button { max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+.table tr[data-selected="true"] { background: color-mix(in srgb, #2563eb 12%, var(--bg-pane)); }
+.measure { position: fixed; left: -20000px; top: 0; width: 1000px; height: 1000px; visibility: hidden; pointer-events: none; }
+.measure > svg { width: 1000px; height: 1000px; }
+@media (max-width: 600px) { .stage { height: 230px; } .content { font-size: 11px; } .tools { gap: 5px; } }

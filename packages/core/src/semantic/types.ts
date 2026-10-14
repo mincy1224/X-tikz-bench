@@ -281,6 +281,8 @@ export type SceneText = {
   text: string;
   textBlockWidth?: number;
   textBlockHeight?: number;
+  /** Baseline relative to the text center, before element transforms. */
+  baselineOffsetY?: number;
   nodeVisualWidth?: number;
   nodeVisualHeight?: number;
   textRenderInfo?: NodeTextRenderInfo;

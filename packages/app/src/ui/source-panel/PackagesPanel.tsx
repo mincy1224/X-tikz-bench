@@ -6,6 +6,7 @@ import { SourceEditTransaction } from "../../store/source-edit-transaction";
 import { getActiveEditorPlatform } from "../../platform/current";
 import { Modal } from "../Modal";
 import css from "./PackagesPanel.module.css";
+import { TexComparisonButton } from "../tex-comparison/TexComparisonButton";
 
 type Row = { key: string; names: string; options: string; span?: Span };
 const routeLabels = { fast: "快速预览", "tex-text": "局部 TeX", "tex-figure": "整图 TeX" };
@@ -82,6 +83,7 @@ export function PackagesToolbar() {
   const environment = useMemo(() => extractTexEnvironment(source), [source]);
   return <><div className={css.toolbar}>
     <button type="button" disabled={dragging} onClick={() => { setOpen(true); }}>宏包</button>
+    <TexComparisonButton />
     <span>{routeLabels[environment.route]}</span>
     {error && <><span role="alert" title={error}>{error}</span><button type="button" onClick={() => { window.dispatchEvent(new Event("tikz-retry-text")); }}>重试公式</button></>}
   </div>{open && <PackageDialog onClose={() => { setOpen(false); }} />}</>;

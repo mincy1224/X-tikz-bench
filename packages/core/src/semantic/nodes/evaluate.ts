@@ -1460,7 +1460,7 @@ export function evaluateNodeItem(
     isMultipartShape(nodeShape) && rawNodeParts.some((part) => part.name !== "text" && part.text.length > 0);
   if (renderedNodeText.length > 0 && !hasMultipartSecondaryParts && !isTwoPartSplitShape && nodeShape !== "rectangle split") {
     pushNodeElement(
-      makeTextElement(
+      { ...makeTextElement(
         nodeSourceId,
         item.id,
         center,
@@ -1476,7 +1476,7 @@ export function evaluateNodeItem(
         undefined,
         item.textSpan,
         hasTextWidthOption(expandedNodeOptions)
-      )
+      ), baselineOffsetY: nodeLayout.baseLineY }
     );
     markFeature("svg_text", "supported");
   }

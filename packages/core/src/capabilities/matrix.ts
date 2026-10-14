@@ -1,6 +1,7 @@
 import type { CapabilityMatrix } from "./types.js";
 
 export const capabilityMatrix: CapabilityMatrix = {
+  renderer_comparison: { parser: "not-applicable", semantic: "not-applicable", svg: "partial", edit: "partial", fixtures: ["basic_draw", "node_text"], notes: "Read-only draft snapshot comparison, calibrated by real TeX coordinates. Visual bounds, text and available anchors are compared; missing mappings remain explicit. Requires target TeX verification." },
   tex_packages: { parser: "partial", semantic: "not-applicable", svg: "partial", edit: "partial", fixtures: ["tex_packages"], notes: "Shared preamble scanner, source-backed package editing and registered fast/text/figure routes. Arbitrary package semantics require local TeX." },
   math_double_brackets: { parser: "not-applicable", semantic: "not-applicable", svg: "partial", edit: "partial", fixtures: ["double_brackets"], notes: "Real MathJax delimiter mapping and same-origin NewCM glyphs, including scalable brackets. Source export infers stmaryrd unless shadowed." },
   tex_text_rendering: { parser: "not-applicable", semantic: "not-applicable", svg: "partial", edit: "partial", fixtures: ["tex_packages"], notes: "Batched local TeX box metrics and SVG in the ordinary canvas. TeX glyph internals are edited as source, not character geometry; real TeX acceptance is required." },

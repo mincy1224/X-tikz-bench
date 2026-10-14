@@ -93,6 +93,7 @@ export const FEATURE_IDS = [
   "tex_packages",
   "math_double_brackets",
   "tex_text_rendering",
+  "renderer_comparison",
   "advanced_pgfplots_source",
   "advanced_circuitikz_source",
   "render_pipeline"

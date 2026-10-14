@@ -16,6 +16,7 @@ TikZ Bench 基于 **Dominik Peters** 的 [TikZ Editor](https://github.com/Domini
 - 本地项目自动保存，支持 TeX、SVG、PNG 和 PDF 导出。
 - 同源 MathJax 公式资源，本地 LaTeX／中文 XeLaTeX 编译。
 - 默认 New Computer Modern 和替代 STIX2 数学字体同源打包，可断外网使用。
+- 快速画布与真实 TeX 叠加对照：透明度、缩放平移，以及逐对象的边界、文字、基线和锚点差异。
 - 支持 `\llbracket`、`\rrbracket` 及 `\left…\right` 伸缩双括号；源码上方的“宏包”面板可修改文档宏包和选项，并检查当前 TeX Live 是否安装。
 - 矩阵、流程图、图表、电路等示例。高级 Forest、PGFPlots、Circuitikz 代码通过本地 TeX 编译；直接画布编辑取决于编辑器支持的语法。
 
@@ -60,6 +61,8 @@ tikz-bench rollback
 升级时，在源码仓库运行 `git pull --ff-only`，再执行 `bash install.sh`。也可运行 `tikz-bench upgrade /path/to/tikz-bench-source`，构建并安装指定源码目录。`rollback` 切换程序，不覆盖数据库；备份命令恢复服务原先的运行／停止状态。
 
 程序目录：`/opt/tikz-bench/releases/`。配置：`/etc/default/tikz-bench`。默认数据库：`/var/lib/tikz-bench/tikz-bench.sqlite`。服务默认监听 `127.0.0.1:5173`。
+
+源码栏上方点“TeX 对照”，对比当前活动图形的草稿快照和本地 TeX。可切换叠加／快速画布／真实 TeX，调整透明度，缩放平移；点差异列表中的对象可高亮或定位到画布。三处 TeX 世界坐标标记保留真实尺寸和位置，不通过拉伸两个包围盒对齐。差异单位为 pt，可设置容差；未取得映射的项显示“—”。临时标记不会写回源码。对照期间草稿改变时保留原快照，并禁止定位旧对象。边界包含箭头路径、不计描边外扩，并非逐像素差异检测。在目标环境运行 `node --import tsx scripts/verify-tex-comparison.mts` 检查真实 TeX 标记，再在浏览器核对字形、基线和坐标对齐；开发机没有 TeX，TeX Live 2026 实测仍待完成。
 
 ## 开发
 
