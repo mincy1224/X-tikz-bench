@@ -22,13 +22,14 @@ export const useCompiledGeometry = create<{ source: string; objects: CompiledGeo
 export function AdvancedCanvas() {
   const source = useEditorStore((state) => state.source);
   const documentId = useEditorStore((state) => state.activeDocumentId);
+  const activeFigureId = useEditorStore((state) => state.activeFigureId);
   const preview = useEditorStore((state) => state.documents[state.activeDocumentId].propertyPreviewBaseSource !== undefined);
   const selected = useEditorStore((state) => state.selectedElementIds);
   const painter = useFormatPainter((state) => state.snapshot);
-  const [result, setResult] = useState<{ source: string; svg: string; bindings: ReturnType<typeof instrumentAdvancedDocument>["bindings"] } | null>(null);
-  const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [retry, setRetry] = useState(0);
+  const [result, setResult] = useState<{ source: string; figureId: string | null; svg: string; bindings: ReturnType<typeof instrumentAdvancedDocument>["bindings"] } | null>(null);
+  const [error, setError] = useState(""); const [mappingWarning, setMappingWarning] = useState(""); const [busy, setBusy] = useState(false); const [retry, setRetry] = useState(0);
   const container = useRef<HTMLDivElement>(null); const overlay = useRef<SVGSVGElement>(null);
-  const latest = useRef<{ source: string; documentId: string } | null>(null);
+  const latest = useRef<{ source: string; documentId: string; figureId: string | null } | null>(null);
   const running = useRef(false); const alive = useRef(true);
   const geometry = useCompiledGeometry(); const [viewBox, setViewBox] = useState("0 0 100 100");
   const drag = useRef<{ transaction: SourceEditTransaction; id: string; index: number; pointerId: number; axis: Map<string, string>; basis: Record<string, Point>; point: Point; frame: number | null } | null>(null);
@@ -43,14 +44,14 @@ export function AdvancedCanvas() {
       while (latest.current && alive.current) {
         const request = latest.current; latest.current = null; setBusy(true);
         try {
-          const compilation = instrumentAdvancedDocument(request.source); const latex = getActiveEditorPlatform().latex;
+          const compilation = instrumentAdvancedDocument(request.source, request.figureId); const latex = getActiveEditorPlatform().latex;
           if (!latex) throw new Error("此平台没有本地 TeX 编译服务。");
           const compiled = latex.compileEditable ? await latex.compileEditable(compilation.source, compilation.sourceVersion) : { svg: await latex.compileTikzToSvg(compilation.source) };
           const current = useEditorStore.getState();
-          if (alive.current && current.activeDocumentId === request.documentId && current.source === request.source) {
-            setResult({ source: request.source, svg: sanitizeSvgMarkup(compiled.svg), bindings: compilation.bindings }); setError("");
+          if (alive.current && current.activeDocumentId === request.documentId && current.activeFigureId === request.figureId && current.source === request.source) {
+            setResult({ source: request.source, figureId: request.figureId, svg: sanitizeSvgMarkup(compiled.svg), bindings: compilation.bindings }); setError("");
           }
-        } catch (error_) { if (alive.current && useEditorStore.getState().source === request.source) setError(error_ instanceof Error ? error_.message : String(error_)); }
+        } catch (error_) { const current = useEditorStore.getState(); if (alive.current && current.activeDocumentId === request.documentId && current.activeFigureId === request.figureId && current.source === request.source) setError(error_ instanceof Error ? error_.message : String(error_)); }
       }
     } finally { running.current = false; if (alive.current) setBusy(false); }
   }, []);
@@ -60,9 +61,17 @@ export function AdvancedCanvas() {
   }, []);
   useEffect(() => {
     if (preview) return;
-    const timer = window.setTimeout(() => { latest.current = { source, documentId }; void drain(); }, 350);
+    const timer = window.setTimeout(() => { latest.current = { source, documentId, figureId: activeFigureId }; void drain(); }, 350);
     return () => { window.clearTimeout(timer); };
-  }, [source, documentId, preview, retry, drain]);
+  }, [source, documentId, activeFigureId, preview, retry, drain]);
+  useEffect(() => {
+    for (const ref of [drag, objectDrag, resizeDrag]) {
+      const current = ref.current; if (!current) continue;
+      if (current.frame !== null) cancelAnimationFrame(current.frame);
+      current.transaction.finish(true); ref.current = null;
+    }
+    setGhost(null);
+  }, [documentId, activeFigureId]);
   useEffect(() => {
     const svg = container.current?.querySelector("svg");
     if (!result || !svg) return;
@@ -98,7 +107,7 @@ export function AdvancedCanvas() {
       if (bounds) objects.push({ id: binding.id, bounds, anchors });
     }
     useCompiledGeometry.getState().set(result.source, objects);
-    if (objects.length !== result.bindings.length) setError("部分组件未返回完整几何映射，已禁用其画布命中。可通过对象列表编辑源码属性。");
+    setMappingWarning(objects.length !== result.bindings.length ? "部分组件未返回完整几何映射，已禁用其画布命中。可通过对象列表编辑源码属性。" : "");
   }, [result]);
   const flushPoint = () => {
     const current = drag.current; if (!current) return; current.frame = null;
@@ -134,8 +143,8 @@ export function AdvancedCanvas() {
     const x = (dx * vy.y - dy * vy.x) / det; const y = (vx.x * dy - vx.y * dx) / det;
     try { current.transaction.preview((base) => {
       if (current.id.startsWith("advanced:")) return moveCircuitObject(base, current.id, x, y);
-      const handles = evaluateTikzFigure(parseTikzForEdit(base).figure, base).editHandles;
-      const result = applyEditAction(base, handles, { kind: "moveElements", elementIds: [current.id], delta: worldPoint(pt(x), pt(y)) });
+      const handles = evaluateTikzFigure(parseTikzForEdit(base, { activeFigureId }).figure, base).editHandles;
+      const result = applyEditAction(base, handles, { kind: "moveElements", elementIds: [current.id], delta: worldPoint(pt(x), pt(y)) }, { parseOptions: { activeFigureId } });
       // Ordinary movement needs the exact baseline semantic handles.
       if (result.kind !== "success") throw new Error(result.kind === "error" ? result.message : result.reason);
       return result.newSource;
@@ -177,12 +186,14 @@ export function AdvancedCanvas() {
     if (current.frame !== null) cancelAnimationFrame(current.frame);
     if (!cancel) flushResize(); current.transaction.finish(cancel); resizeDrag.current = null;
   };
-  const editable = result?.source === source || drag.current !== null || objectDrag.current !== null || resizeDrag.current !== null;
+  const mappedCurrent = result?.source === source && result.figureId === activeFigureId;
+  const editable = mappedCurrent || drag.current !== null || objectDrag.current !== null || resizeDrag.current !== null;
   return <section className={css.canvas} data-canvas-viewport="true" tabIndex={0} onKeyDown={(event) => {
     if (event.key === "Escape") { finishPoint(true); finishObject(true); finishResize(true); event.preventDefault(); }
   }}>
     <div className={css.status} role="status">{busy ? "正在更新 TeX 图形…" : error ? "编译失败，已保留上次画面" : "主画布 · TeX"}<button type="button" onClick={() => { setRetry((value) => value + 1); }}>重新编译</button></div>
     {error ? <pre className={css.error} role="alert">{error}</pre> : null}
+    {mappingWarning ? <p className={css.error} role="alert">{mappingWarning}</p> : null}
     {!result ? <p className={css.placeholder}>正在准备主画布；请确认本地 TeX 服务可用。</p> : null}
     <div className={css.stage} ref={container}>
       {result ? <div className={css.svg} dangerouslySetInnerHTML={{ __html: result.svg }} /> : null}
@@ -206,7 +217,7 @@ export function AdvancedCanvas() {
       }} onPointerUp={() => { finishPoint(false); finishObject(false); finishResize(false); }} onPointerCancel={() => { finishPoint(true); finishObject(true); finishResize(true); }}>
         {geometry.source === result?.source ? geometry.objects.map((object) => <g key={object.id}>
           <rect {...object.bounds} fill="transparent" stroke={selected.has(object.id) ? "#4285ef" : "none"} strokeWidth="1" vectorEffect="non-scaling-stroke" pointerEvents={editable ? "all" : "none"} onPointerDown={(event) => {
-            event.stopPropagation(); if (result?.source !== source) return; if (paintObject(object.id)) return;
+            event.stopPropagation(); if (!mappedCurrent) return; if (paintObject(object.id)) return;
             useEditorStore.getState().dispatch({ type: "SELECT", id: object.id, additive: event.shiftKey });
             const model = parseAdvancedObjects(source).objects.find((candidate) => candidate.id === object.id);
             if (model && model.family !== "circuit") return;
@@ -216,13 +227,13 @@ export function AdvancedCanvas() {
             overlay.current?.setPointerCapture(event.pointerId);
           }} />
           {selected.has(object.id) && object.id.includes(":forest:") ? [-1, 0, 1].flatMap((sx) => [-1, 0, 1].filter((sy) => sx || sy).map((sy) => <rect key={`resize:${sx}:${sy}`} x={object.bounds.x + (sx + 1) * object.bounds.width / 2 - 3} y={object.bounds.y + (sy + 1) * object.bounds.height / 2 - 3} width="6" height="6" fill="white" stroke="#4285ef" vectorEffect="non-scaling-stroke" aria-label="调整节点尺寸" pointerEvents={editable ? "all" : "none"} onPointerDown={(event) => {
-            event.stopPropagation(); if (result?.source !== source) return; const matrix = overlay.current?.getScreenCTM(); if (!matrix || !calibration.current.basisx) return;
+            event.stopPropagation(); if (!mappedCurrent) return; const matrix = overlay.current?.getScreenCTM(); if (!matrix || !calibration.current.basisx) return;
             const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
             resizeDrag.current = { transaction: new SourceEditTransaction("调整节点尺寸"), id: object.id, pointerId: event.pointerId, start: point, point, width: object.bounds.width, height: object.bounds.height, sx, sy, frame: null };
             overlay.current?.setPointerCapture(event.pointerId);
           }} />)) : null}
           {selected.has(object.id) ? Object.entries(object.anchors).filter(([anchor]) => anchor.startsWith("point")).map(([anchor, point]) => <circle key={anchor} cx={point.x} cy={point.y} r="3" fill="white" stroke="#4285ef" onPointerDown={(event) => {
-            if (result?.source !== source) return; event.stopPropagation(); const model = advancedObject(source, object.id); if (!model.parentId) return;
+            if (!mappedCurrent) return; event.stopPropagation(); const model = advancedObject(source, object.id); if (!model.parentId) return;
             const axisModel = advancedObject(source, model.parentId); const axisGeometry = geometry.objects.find((candidate) => candidate.id === model.parentId); if (!axisGeometry) return;
             const axis = advancedOptionValues(source, axisModel); axis.set("environment", axisModel.type.slice(5));
             drag.current = { transaction: new SourceEditTransaction("移动数据点"), id: object.id, index: Number(anchor.slice(5)), pointerId: event.pointerId, basis: axisGeometry.anchors, axis, point, frame: null };
@@ -232,6 +243,6 @@ export function AdvancedCanvas() {
         {ghost ? <circle cx={ghost.x} cy={ghost.y} r="3" fill="#4285ef" pointerEvents="none" /> : null}
       </svg>
     </div>
-    <div className={css.objects} aria-label="高级对象选择">{parseAdvancedObjects(source).objects.map((object) => <button type="button" key={object.id} aria-pressed={selected.has(object.id)} onClick={() => { if (!paintObject(object.id)) useEditorStore.getState().dispatch({ type: "SELECT", id: object.id, additive: false }); }}>{object.label || object.type}</button>)}</div>
+    <div className={css.objects} aria-label="高级对象选择">{parseAdvancedObjects(source).objects.filter((object) => result?.bindings.some((binding) => binding.id === object.id)).map((object) => <button type="button" disabled={!mappedCurrent} key={object.id} aria-pressed={selected.has(object.id)} onClick={() => { if (!paintObject(object.id)) useEditorStore.getState().dispatch({ type: "SELECT", id: object.id, additive: false }); }}>{object.label || object.type}</button>)}</div>
   </section>;
 }

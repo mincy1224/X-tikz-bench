@@ -20,6 +20,7 @@ export type NodeTextMeasureRequest = {
 };
 
 export type NodeTextMetrics = {
+  renderer?: "mathjax" | "tex";
   cacheKey: string;
   width: number;
   height: number;
@@ -47,7 +48,7 @@ export type NodeTextRenderInfo =
       mode: "plain";
     }
   | {
-      mode: "mathjax";
+      mode: "mathjax" | "tex";
       cacheKey: string;
       paragraphId: string | null;
       renderSourceText: string;

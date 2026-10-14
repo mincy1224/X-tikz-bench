@@ -11,6 +11,8 @@ import {
   type WrappedTextGap
 } from "./knuth-plass/index.js";
 import { preloadEnglishHyphenator } from "./knuth-plass/paragraph/hyphenate.js";
+import { registerGlobalMathJaxBrackets, registerMathJaxBrackets } from "./mathjax-brackets.js";
+import type { TexEnvironment } from "../tex/environment.js";
 import type { ParagraphLayoutReport } from "./knuth-plass/index.js";
 import type {
   NodeTextEngine,
@@ -140,6 +142,8 @@ let sharedEnginePromise: Promise<NodeTextEngine> | null = null;
 let browserRuntimePromise: Promise<MathJaxRuntime> | null = null;
 let moduleWorkerRuntimePromise: Promise<MathJaxRuntime> | null = null;
 let activeBrowserFont: MathJaxFont = DEFAULT_FONT;
+const environmentEngines = new Map<string, Promise<NodeTextEngine>>();
+let activeEnvironmentRuntime: MathJaxRuntime | null = null;
 
 type WorkerFontLoader = (name: string) => Promise<unknown>;
 let workerFontLoader: WorkerFontLoader | null = null;
@@ -156,13 +160,25 @@ export function setWorkerFontLoader(loader: WorkerFontLoader): void {
   workerFontLoader = loader;
 }
 
-export async function createMathJaxNodeTextEngine(options?: { font?: MathJaxFont }): Promise<NodeTextEngine> {
+export async function createMathJaxNodeTextEngine(options?: { font?: MathJaxFont; environment?: TexEnvironment; scopeKey?: string }): Promise<NodeTextEngine> {
   const font = options?.font ?? DEFAULT_FONT;
   if (hasBrowserDomGlobals() && font !== activeBrowserFont) {
     activeBrowserFont = font;
     sharedEnginePromise = null;
     browserRuntimePromise = null;
     resetBrowserMathJax();
+    environmentEngines.clear();
+  }
+  if (options?.environment) {
+    const key = `${font}:${options.environment.fingerprint}:${options.scopeKey ?? ""}`;
+    let engine = environmentEngines.get(key);
+    if (!engine) {
+      engine = initializeEngine(font, true);
+      environmentEngines.set(key, engine);
+      if (environmentEngines.size > 8) environmentEngines.delete(environmentEngines.keys().next().value!);
+      engine.catch(() => { if (environmentEngines.get(key) === engine) environmentEngines.delete(key); });
+    }
+    return engine;
   }
   sharedEnginePromise ??= initializeEngine(font);
   try {
@@ -174,7 +190,7 @@ export async function createMathJaxNodeTextEngine(options?: { font?: MathJaxFont
 }
 
 export function getActiveMathJaxOutputJax(): unknown {
-  const browserRuntime = (globalThis as { MathJax?: MathJaxRuntime }).MathJax;
+  const browserRuntime = activeEnvironmentRuntime ?? (globalThis as { MathJax?: MathJaxRuntime }).MathJax;
   return (
     browserRuntime?.outputJax ??
     browserRuntime?.startup?.output ??
@@ -183,13 +199,24 @@ export function getActiveMathJaxOutputJax(): unknown {
   );
 }
 
-async function initializeEngine(font: MathJaxFont): Promise<NodeTextEngine> {
+async function initializeEngine(font: MathJaxFont, isolate = false): Promise<NodeTextEngine> {
   const hyphenatorPreload = preloadEnglishHyphenator();
-  const runtime = hasBrowserDomGlobals()
+  const baseRuntime = hasBrowserDomGlobals()
     ? await initializeBrowserRuntime(font)
     : hasWorkerRuntimeGlobals()
       ? await initializeWorkerRuntime()
-      : await initializeNodeRuntime();
+      : await initializeNodeRuntime(font);
+  let nodeFontData: unknown;
+  if (!hasBrowserDomGlobals() && !hasWorkerRuntimeGlobals()) {
+    const asyncLoaderModuleId = "@mathjax/src/js/util/asyncLoad/esm.js";
+    await import(/* @vite-ignore */ asyncLoaderModuleId);
+    const fontModuleId = `@mathjax/${font}-font/js/svg.js`;
+    const fontModule = await import(/* @vite-ignore */ fontModuleId) as Record<string, unknown>;
+    nodeFontData = Object.values(fontModule).find((value) => typeof value === "function" && /Font$/u.test(value.name));
+    if (!nodeFontData) throw new Error(`MathJax font is unavailable: ${font}`);
+  }
+  const runtime = isolate || nodeFontData ? isolateMathJaxRuntime(baseRuntime, nodeFontData) : baseRuntime;
+  activeEnvironmentRuntime = runtime;
   await preloadMathJaxWarmupExpressions(runtime);
   await hyphenatorPreload;
 
@@ -260,6 +287,7 @@ async function initializeEngine(font: MathJaxFont): Promise<NodeTextEngine> {
       }
     },
     measure(request: NodeTextMeasureRequest): NodeTextMetrics | null {
+      activeEnvironmentRuntime = runtime;
       const scale = computeFontScale(request.fontSizePt);
       const normalizedWidth = request.textWidthPt == null ? null : request.textWidthPt / scale;
       const mode = request.mode ?? "text";
@@ -332,6 +360,7 @@ async function initializeEngine(font: MathJaxFont): Promise<NodeTextEngine> {
       };
     },
     renderFromCache(cacheKey: string): NodeTextRenderPayload | null {
+      activeEnvironmentRuntime = runtime;
       return cache.get(cacheKey)?.payload ?? null;
     },
     async flushPending(): Promise<readonly string[]> {
@@ -351,7 +380,7 @@ async function initializeEngine(font: MathJaxFont): Promise<NodeTextEngine> {
   };
 }
 
-async function initializeNodeRuntime(): Promise<MathJaxRuntime> {
+async function initializeNodeRuntime(font: MathJaxFont): Promise<MathJaxRuntime> {
   const moduleId = "mathjax";
   const module = (await import(/* @vite-ignore */ moduleId)) as { default?: MathJaxEntrypoint };
   const entrypoint = module.default;
@@ -361,12 +390,47 @@ async function initializeNodeRuntime(): Promise<MathJaxRuntime> {
   const urlModule = "node:url";
   const { pathToFileURL } = await import(/* @vite-ignore */ urlModule) as { pathToFileURL: (path: string) => URL };
   const config = createMathJaxConfig();
+  config.output = { font };
   config.loader = {
     ...(config.loader as Record<string, unknown>),
     require: (specifier: string) => import(/* @vite-ignore */ /^[A-Za-z]:[\\/]|^\//u.test(specifier) ? pathToFileURL(specifier).href : specifier),
     failed: (error: Error) => { throw error; }
   };
   return entrypoint.init(config);
+}
+
+type IsolatedJax = { options: Record<string, unknown>; font?: unknown; constructor: new (options: Record<string, unknown>) => IsolatedJax };
+type IsolatedDocument = {
+  inputJax: IsolatedJax[]; outputJax: IsolatedJax; options: Record<string, unknown>; document: unknown; adaptor: unknown;
+  constructor: new (document: unknown, adaptor: unknown, options: Record<string, unknown>) => IsolatedDocument;
+  convert: (input: string, options: { display: boolean }) => unknown;
+};
+/** Reuse loaded resources, but never share TeX command definitions between documents. */
+function isolateMathJaxRuntime(base: MathJaxRuntime, fontData?: unknown): MathJaxRuntime {
+  const document = base.startup?.document as unknown as IsolatedDocument | undefined;
+  if (!document?.inputJax?.length || !document.outputJax) return base;
+  const input = new document.inputJax[0].constructor({ ...document.inputJax[0].options });
+  const outputOptions: Record<string, unknown> = { ...document.outputJax.options, fontData: document.outputJax.font };
+  if (fontData) { delete outputOptions.font; outputOptions.fontData = fontData; }
+  delete outputOptions.matchFontHeight;
+  const output = new document.outputJax.constructor(outputOptions);
+  const isolated = new document.constructor(document.document, document.adaptor, { ...document.options, InputJax: input, OutputJax: output });
+  const convert = (text: string, options: { display: boolean }) => isolated.convert(text, options);
+  return {
+    tex2svg: convert,
+    tex2svgPromise: async (text, options) => {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        try { return convert(text, options); }
+        catch (error) {
+          const retry = (error as { retry?: Promise<unknown> }).retry;
+          if (!retry) throw error;
+          await retry;
+        }
+      }
+      throw new Error("MathJax resources did not finish loading.");
+    },
+    outputJax: output, startup: { ...base.startup, document: isolated, output }
+  };
 }
 
 async function initializeWorkerRuntime(): Promise<MathJaxRuntime> {
@@ -398,7 +462,14 @@ async function initializeWorkerRuntimeOnce(): Promise<MathJaxRuntime> {
     import("@mathjax/src/js/input/tex/newcommand/NewcommandConfiguration.js"),
     import("@mathjax/src/js/input/tex/color/ColorConfiguration.js"),
     import("@mathjax/src/js/input/tex/textmacros/TextMacrosConfiguration.js"),
+    import("@mathjax/src/js/input/tex/mathtools/MathtoolsConfiguration.js"),
+    import("@mathjax/src/js/input/tex/cancel/CancelConfiguration.js"),
+    import("@mathjax/src/js/input/tex/braket/BraketConfiguration.js"),
   ]);
+  const [TokenMap, ParseMethods, Configuration] = await Promise.all([
+    import("@mathjax/src/js/input/tex/TokenMap.js"), import("@mathjax/src/js/input/tex/ParseMethods.js"), import("@mathjax/src/js/input/tex/Configuration.js")
+  ]);
+  registerMathJaxBrackets({ TokenMap, ParseMethods, Configuration });
 
   // Override mathjax.asyncLoad (set by asyncLoad/esm.js) so that bare-specifier
   // font imports are routed through the registered workerFontLoader (Vite lazy
@@ -428,7 +499,7 @@ async function initializeWorkerRuntimeOnce(): Promise<MathJaxRuntime> {
   RegisterHTMLHandler(adaptor);
 
   const tex = new TeX({
-    packages: ["base", "ams", "newcommand", "color", "textmacros"],
+    packages: ["base", "ams", "newcommand", "color", "textmacros", "mathtools", "cancel", "braket", "tikz-brackets"],
     formatError: (_jax: unknown, err: Error) => {
       throw err;
     }
@@ -456,6 +527,7 @@ async function initializeWorkerRuntimeOnce(): Promise<MathJaxRuntime> {
     tex2svgPromise: (input, options) => Promise.resolve(tex2svg(input, options)),
     outputJax: svg,
     startup: {
+      document,
       output: svg,
       adaptor: {
         firstChild(node: unknown): unknown {
@@ -527,14 +599,14 @@ function hasWorkerRuntimeGlobals(): boolean {
 function createMathJaxConfig(): Record<string, unknown> {
   const config = {
     loader: {
-      load: ["input/tex", "output/svg", "[tex]/color", "[tex]/html"]
+      load: ["input/tex", "output/svg", "[tex]/color", "[tex]/html", "[tex]/mathtools", "[tex]/cancel", "[tex]/braket"]
     },
     tex: {
       macros: {
         textsc: ["\\style{font-variant-caps: small-caps}{#1}", 1]
       },
       packages: {
-        "[+]": ["color", "html"],
+        "[+]": ["color", "html", "mathtools", "cancel", "braket", "tikz-brackets"],
         "[-]": ["noundefined"]
       },
       formatError: (_jax: unknown, err: Error) => {
@@ -548,7 +620,11 @@ function createMathJaxConfig(): Record<string, unknown> {
       }
     },
     startup: {
-      typeset: false
+      typeset: false,
+      ready: () => {
+        registerGlobalMathJaxBrackets();
+        (globalThis as unknown as { MathJax: { startup: { defaultReady: () => void } } }).MathJax.startup.defaultReady();
+      }
     }
   };
   installKnuthPlassVisitor(config, ["svg"]);
@@ -588,7 +664,7 @@ async function coerceBrowserRuntime(candidate: unknown): Promise<MathJaxRuntime 
     tex2svg: candidate.tex2svg as MathJaxRuntime["tex2svg"],
     tex2svgPromise:
       typeof candidate.tex2svgPromise === "function" ? (candidate.tex2svgPromise as MathJaxRuntime["tex2svgPromise"]) : undefined,
-    outputJax: startup?.output ?? startup?.document?.outputJax,
+    outputJax: candidate.outputJax ?? startup?.output ?? startup?.document?.outputJax,
     startup: startup ?? undefined
   };
 }
@@ -605,8 +681,8 @@ function configureBrowserMathJaxGlobal(font: MathJaxFont): void {
   const existingTexPackages = isRecord(existingTex.packages) ? existingTex.packages : {};
   const existingSvgLinebreaks = isRecord(existingSvg.linebreaks) ? existingSvg.linebreaks : {};
 
-  const loaderLoad = uniqueStrings([...toStringArray(existingLoader.load), "input/tex", "output/svg", "[tex]/color", "[tex]/html"]);
-  const enabledPackages = uniqueStrings([...toStringArray(existingTexPackages["[+]"]), "color", "html"]);
+  const loaderLoad = uniqueStrings([...toStringArray(existingLoader.load), "input/tex", "output/svg", "[tex]/color", "[tex]/html", "[tex]/mathtools", "[tex]/cancel", "[tex]/braket"]);
+  const enabledPackages = uniqueStrings([...toStringArray(existingTexPackages["[+]"]), "color", "html", "mathtools", "cancel", "braket", "tikz-brackets"]);
   const disabledPackages = uniqueStrings([...toStringArray(existingTexPackages["[-]"]), "noundefined"]);
 
   const config = {
@@ -645,7 +721,11 @@ function configureBrowserMathJaxGlobal(font: MathJaxFont): void {
     },
     startup: {
       ...existingStartup,
-      typeset: false
+      typeset: false,
+      ready: () => {
+        registerGlobalMathJaxBrackets();
+        (globalThis as unknown as { MathJax: { startup: { defaultReady: () => void } } }).MathJax.startup.defaultReady();
+      }
     }
   };
   installKnuthPlassVisitor(config, ["svg"]);
@@ -861,7 +941,8 @@ async function preloadMathJaxWarmupExpressions(runtime: MathJaxRuntime): Promise
     "\\mbox{\\textrm{0}}",
     "\\mbox{\\textbf{0}}",
     "\\mbox{\\textit{0}}",
-    "\\mbox{$\\mathstrut a$}"
+    "\\mbox{$\\mathstrut a$}",
+    "\\mbox{$\\llbracket x\\rrbracket+\\Bigg\\llbracket x\\Bigg\\rrbracket$}"
   ];
 
   for (const expression of warmupExpressions) {

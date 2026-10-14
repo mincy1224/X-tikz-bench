@@ -1,6 +1,7 @@
 import type { FeatureId } from "./feature-ids.js";
 
 export const parserFeatureRegistry = [
+  "tex_packages",
   "advanced_forest_source", "advanced_pgfplots_source", "advanced_circuitikz_source",
   "path_statement",
   "scope_statement",
@@ -180,6 +181,7 @@ export const semanticFeatureRegistry = [
 ] as const satisfies readonly FeatureId[];
 
 export const svgFeatureRegistry = [
+  "tex_packages", "math_double_brackets", "tex_text_rendering",
   "path_statement",
   "scope_statement",
   "foreach_statement",
@@ -272,6 +274,7 @@ export const svgFeatureRegistry = [
 ] as const satisfies readonly FeatureId[];
 
 export const editFeatureRegistry = [
+  "tex_packages", "math_double_brackets", "tex_text_rendering",
   "advanced_forest_source", "advanced_pgfplots_source", "advanced_circuitikz_source",
   "path_statement",
   "scope_statement",

@@ -15,4 +15,9 @@ await cp(source, destination, { recursive: true });
 
 const vendor = path.dirname(destination);
 await cp(path.dirname(coreRequire.resolve("mathjax/package.json")), path.join(vendor, "mathjax"), { recursive: true });
-await cp(path.dirname(coreRequire.resolve("@mathjax/mathjax-newcm-font/package.json")), path.join(vendor, "fonts", "mathjax-newcm-font"), { recursive: true });
+const fontDestination = path.resolve(vendor, "fonts");
+if (!fontDestination.startsWith(`${repoRoot}${path.sep}`)) throw new Error("Font asset destination escaped the repository.");
+await rm(fontDestination, { recursive: true, force: true });
+for (const font of ["mathjax-newcm-font", "mathjax-stix2-font"]) {
+  await cp(path.dirname(coreRequire.resolve(`@mathjax/${font}/package.json`)), path.join(fontDestination, font), { recursive: true });
+}

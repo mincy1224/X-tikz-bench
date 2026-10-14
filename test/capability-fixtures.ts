@@ -1,4 +1,6 @@
 export const capabilityFixtures: Record<string, string> = {
+  tex_packages: String.raw`\usepackage{stmaryrd,mathtools}\begin{tikzpicture}\node {$\llbracket x\rrbracket$};\end{tikzpicture}`,
+  double_brackets: String.raw`\begin{tikzpicture}\node {$\left\llbracket\frac{1}{2}\right\rrbracket$};\end{tikzpicture}`,
   advanced_forest: String.raw`\begin{forest}[A [B]]\end{forest}`,
   advanced_plots: String.raw`\begin{tikzpicture}\begin{axis}\addplot coordinates {(1,2)(2,3)};\end{axis}\end{tikzpicture}`,
   advanced_circuit: String.raw`\begin{circuitikz}\draw (0,0) to[R] (2,0);\end{circuitikz}`,

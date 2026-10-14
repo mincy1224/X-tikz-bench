@@ -505,7 +505,7 @@ export function emitSvgModel(scene: SceneFigure, opts: EmitSvgOptions = {}): Svg
     const rotation = element.rotation ?? 0;
     const hasRotation = Math.abs(rotation) > 1e-6;
     const svgElementTransform = element.transform ? worldTransformToSvgTransform(element.transform, viewBox) : null;
-    if (element.textRenderInfo?.mode === "mathjax") {
+    if (element.textRenderInfo && element.textRenderInfo.mode !== "plain") {
       const rendered = opts.textEngine?.renderFromCache(element.textRenderInfo.cacheKey) ?? null;
       if (!rendered) {
         diagnostics.push({
@@ -529,7 +529,7 @@ export function emitSvgModel(scene: SceneFigure, opts: EmitSvgOptions = {}): Svg
           preserveAspectRatio != null
             ? ` preserveAspectRatio="${escapeAttr(preserveAspectRatio)}"`
             : "";
-        const renderedSvg = `<svg data-source-id="${escapeAttr(element.sourceRef.sourceId)}" data-text-renderer="mathjax"${paragraphAttr}${layoutKindAttr}${sceneTextIdAttr} x="${fmt(x)}" y="${fmt(y)}" width="${fmt(textBlockWidth)}" height="${fmt(textBlockHeight)}" viewBox="${renderedViewBox}"${preserveAspectRatioAttr} color="${escapeAttr(textColor)}" opacity="${fmt(textOpacity)}" overflow="visible">${rendered.body}</svg>`;
+        const renderedSvg = `<svg data-source-id="${escapeAttr(element.sourceRef.sourceId)}" data-text-renderer="${element.textRenderInfo.mode}"${paragraphAttr}${layoutKindAttr}${sceneTextIdAttr} x="${fmt(x)}" y="${fmt(y)}" width="${fmt(textBlockWidth)}" height="${fmt(textBlockHeight)}" viewBox="${renderedViewBox}"${preserveAspectRatioAttr} color="${escapeAttr(textColor)}" opacity="${fmt(textOpacity)}" overflow="visible">${rendered.body}</svg>`;
         if (hasRotation || svgElementTransform) {
           const transforms: string[] = [];
           if (svgElementTransform) transforms.push(formatMatrix(svgElementTransform));

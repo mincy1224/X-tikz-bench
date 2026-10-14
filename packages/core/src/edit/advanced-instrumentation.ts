@@ -3,6 +3,7 @@ import { computeSourceFingerprint } from "../utils/source-fingerprint.js";
 import { parseTikzForEdit } from "./parse-options.js";
 import { applyEditAction } from "./actions.js";
 import type { Statement } from "../ast/types.js";
+import { extractTexEnvironment } from "../tex/environment.js";
 
 export type CompiledObjectBinding = { id: string; key: string; pointCount: number };
 export type EditableCompilation = { source: string; sourceVersion: string; bindings: CompiledObjectBinding[] };
@@ -22,11 +23,14 @@ function appendOption(source: string, object: AdvancedObject, updates: Map<strin
   return modified.slice(object.options.from, refreshed.options.to);
 }
 
-export function instrumentAdvancedDocument(source: string): EditableCompilation {
+export function instrumentAdvancedDocument(source: string, activeFigureId?: string | null): EditableCompilation {
+  const parsed = parseTikzForEdit(source, { activeFigureId });
+  const activeFigure = parsed.figures.find((figure) => figure.id === parsed.activeFigureId);
   const document = parseAdvancedObjects(source);
   const changes: { from: number; to: number; text: string }[] = [];
   const bindings: CompiledObjectBinding[] = [];
   for (const [index, object] of document.objects.entries()) {
+    if (activeFigure && (object.span.from < activeFigure.span.from || object.span.to > activeFigure.span.to)) continue;
     // groupplot needs per-axis hooks; never inject axis-only commands at its outer end.
     const parent = document.objects.find((candidate) => candidate.id === object.parentId);
     if (object.type === "plot:groupplot" || parent?.type === "plot:groupplot") continue;
@@ -73,7 +77,7 @@ export function instrumentAdvancedDocument(source: string): EditableCompilation 
       if (statement.kind !== "Path" || document.objects.some((object) => object.environment.from <= statement.span.from && object.environment.to >= statement.span.to)) continue;
       const key = String(document.objects.length + bindings.length); const name = `tbEditable${key}`;
       if (statement.command === "node") {
-        const result = applyEditAction(source, [], { kind: "setProperty", elementId: statement.id, level: "command", key: "alias", value: name });
+        const result = applyEditAction(source, [], { kind: "setProperty", elementId: statement.id, level: "command", key: "alias", value: name }, { parseOptions: { activeFigureId } });
         if (result.kind !== "success") continue;
         const suffix = source.length - statement.span.to;
         changes.push({ from: statement.span.from, to: statement.span.to, text: result.newSource.slice(statement.span.from, result.newSource.length - suffix) + nodeMarkers(key, name) });
@@ -85,10 +89,27 @@ export function instrumentAdvancedDocument(source: string): EditableCompilation 
       bindings.push({ id: statement.id, key, pointCount: 0 });
     }
   };
-  visit(parseTikzForEdit(source).figure.body);
-  const pictureEnd = Math.max(source.lastIndexOf("\\end{tikzpicture}"), source.lastIndexOf("\\end{circuitikz}"));
+  visit(parsed.figure.body);
+  const pictureEnd = activeFigure?.endSpan.from ?? Math.max(source.lastIndexOf("\\end{tikzpicture}"), source.lastIndexOf("\\end{circuitikz}"));
   if (pictureEnd >= 0) changes.push({ from: pictureEnd, to: pictureEnd, text: marker("world", "basis0", "(0pt,0pt)") + marker("world", "basisx", "(1pt,0pt)") + marker("world", "basisy", "(0pt,1pt)") });
   let instrumented = source;
+  if (activeFigure && parsed.figures.length > 1) {
+    // Compile only the active picture. Keep original object IDs and original
+    // source ranges in bindings; the temporary copy never enters persistence.
+    instrumented = source.slice(activeFigure.span.from, activeFigure.span.to);
+    for (const change of changes.filter((change) => change.from >= activeFigure.span.from && change.to <= activeFigure.span.to).sort((a, b) => b.from - a.from || b.to - a.to)) {
+      const from = change.from - activeFigure.span.from, to = change.to - activeFigure.span.from;
+      instrumented = instrumented.slice(0, from) + change.text + instrumented.slice(to);
+    }
+    const environment = extractTexEnvironment(source);
+    const context = parsed.figure.body.filter((statement) => statement.span.from >= environment.prefixEnd && statement.span.to <= activeFigure.span.from)
+      .map((statement) => source.slice(statement.span.from, statement.span.to)).join("\n");
+    const prefix = source.slice(0, environment.prefixEnd);
+    instrumented = environment.completeDocument
+      ? `${prefix}\\begin{document}\n${context}\n${instrumented}\n\\end{document}`
+      : `${prefix}\n${context}\n${instrumented}`;
+    return { source: instrumented, sourceVersion: computeSourceFingerprint(`${source}\0${parsed.activeFigureId}`), bindings };
+  }
   for (const change of changes.sort((a, b) => b.from - a.from || b.to - a.to)) instrumented = instrumented.slice(0, change.from) + change.text + instrumented.slice(change.to);
   return { source: instrumented, sourceVersion: computeSourceFingerprint(source), bindings };
 }

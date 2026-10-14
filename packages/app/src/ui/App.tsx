@@ -8,7 +8,7 @@ import {
 } from "../app-menu";
 import { useEditorStore } from "../store/store";
 import { useWorkspaceListStore } from "../store/workspace-list-store";
-import { computeSnapshot, makeEmptySnapshot, setMathJaxFont, type ComputeRequest, type ComputeResponse } from "../compute";
+import { computeSnapshot, makeEmptySnapshot, setMathJaxFont, retryTexTextRendering, type ComputeRequest, type ComputeResponse } from "../compute";
 import { applyEditAction } from "tikz-editor/edit/actions";
 import { getRepeatSelectionEligibility } from "tikz-editor/edit/actions/repeat";
 import { collectSourceWorldBounds } from "tikz-editor/edit/snapping";
@@ -925,6 +925,7 @@ export function App({ project }: AppProps = {}) {
           type: "SNAPSHOT_READY",
           requestId: response.id,
           snapshot: response.snapshot,
+          textError: response.diagnostics.find((diagnostic) => diagnostic.code === "tex-text-compile-error")?.message,
           documentId: response.documentId
         });
       },
@@ -973,6 +974,14 @@ export function App({ project }: AppProps = {}) {
     : null;
 
   const lastRenderRequest = useRef<{ documentId: string; figureId: string | null; source: string; font: typeof mathJaxFont; viewBox: typeof renderViewBox } | null>(null);
+  useEffect(() => {
+    const retry = () => { retryTexTextRendering();
+      const state = useEditorStore.getState();
+      computeSchedulerRef.current?.schedule({ id: crypto.randomUUID(), documentId: state.activeDocumentId, source: state.source, sourceRevision: state.sourceRevision, activeFigureId: state.activeFigureId, trigger: "other" });
+    };
+    window.addEventListener("tikz-retry-text", retry);
+    return () => { window.removeEventListener("tikz-retry-text", retry); };
+  }, []);
   const hasSameRenderInput = useCallback(() => {
     const last = lastRenderRequest.current;
     return last?.documentId === activeDocumentId && last.figureId === activeFigureId && last.source === source && last.font === mathJaxFont && (last.viewBox === renderViewBox || isDragComputeTrigger && last.viewBox === null);

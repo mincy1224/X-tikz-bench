@@ -6,6 +6,7 @@ import type {
 } from "../ast/types.js";
 import { parseTikz } from "../parser/index.js";
 import { evaluateTikzFigure } from "../semantic/evaluate.js";
+import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../tex/environment.js";
 
 export const STANDALONE_LATEX_EXPORT_MIME_TYPE = "application/x-tex;charset=utf-8";
 export const DEFAULT_STANDALONE_LATEX_EXPORT_FILE_NAME = "tikz-export.tex";
@@ -321,7 +322,9 @@ export function createMinimalTikzSourceArtifact(
     analysis.definitionChunks,
     analysis.requiredLibraries
   );
-  const chunks = [...definitionChunks, analysis.figureSource].filter((chunk) => chunk.trim().length > 0);
+  const environment = extractTexEnvironment(options.source);
+  const preamble = environment.packages.length ? environment.preamble : "";
+  const chunks = [preamble, ...inferredMathPackages(options.source, environment).map((name) => `\\usepackage{${name}}`), ...definitionChunks.filter((chunk) => !preamble.includes(chunk)), analysis.figureSource].filter((chunk) => chunk.trim().length > 0);
   return {
     text: `${chunks.join("\n")}\n`,
     complete: analysis.complete,
@@ -342,13 +345,19 @@ export function createStandaloneLatexExportArtifact(
 
   const lines: string[] = [];
   lines.push(`\\documentclass${classOptionsText}{standalone}`);
-  lines.push("\\usepackage{tikz}");
+  const environment = extractTexEnvironment(options.source);
+  const preamble = environment.packages.length || environment.completeDocument ? environment.preamble : "";
+  const effectivePreamble = withDefaultPackages(preamble, [
+    { name: "tikz" },
+    ...inferredMathPackages(options.source, environment).map((name) => ({ name }))
+  ]);
+  if (effectivePreamble.trim()) lines.push(effectivePreamble);
   if (requiredLibraries.length > 0) {
     lines.push(`\\usetikzlibrary{${requiredLibraries.join(",")}}`);
   }
   lines.push("\\begin{document}");
   if (definitionChunks.length > 0) {
-    lines.push(definitionChunks.join("\n"));
+    lines.push(definitionChunks.filter((chunk) => !preamble.includes(chunk)).join("\n"));
   }
   lines.push(analysis.figureSource);
   lines.push("\\end{document}");

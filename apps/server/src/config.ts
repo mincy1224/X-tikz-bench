@@ -4,6 +4,7 @@ export type ServerConfig = {
   host: string;
   port: number;
   latexBin: string;
+  kpsewhichBin?: string;
   xelatexBin?: string;
   dvisvgmBin: string;
   dvipdfmxBin: string;
@@ -39,6 +40,7 @@ export function loadConfig(argv = process.argv.slice(2)): ServerConfig {
     host: args.host ?? process.env.TIKZ_SERVER_HOST ?? "127.0.0.1",
     port: args.port ?? positiveInt(process.env.TIKZ_SERVER_PORT ?? process.env.PORT, 5173, 65_535),
     latexBin: process.env.TIKZ_LATEX_BIN ?? "latex",
+    kpsewhichBin: process.env.TIKZ_KPSEWHICH_BIN ?? (path.isAbsolute(process.env.TIKZ_LATEX_BIN ?? "") ? path.join(path.dirname(process.env.TIKZ_LATEX_BIN!), "kpsewhich") : "kpsewhich"),
     xelatexBin: process.env.TIKZ_XELATEX_BIN ?? "xelatex",
     dvisvgmBin: process.env.TIKZ_DVISVGM_BIN ?? "dvisvgm",
     dvipdfmxBin: process.env.TIKZ_DVIPDFMX_BIN ?? "dvipdfmx",

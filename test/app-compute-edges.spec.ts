@@ -67,7 +67,7 @@ describe("computeSnapshot edge orchestration", () => {
     vi.doUnmock("tikz-editor/text/mathjax-engine");
   });
 
-  it("uses the full path with a missing optional text engine and reuses warm prewarm results", async () => {
+  it("reports unavailable MathJax and leaves source available for retry", async () => {
     const renderTikzToSvgAsync = vi.fn(async (source: string) => makeRenderResult(source));
     vi.doMock("tikz-editor/render/index", () => ({ renderTikzToSvgAsync }));
     vi.doMock("tikz-editor/text/mathjax-engine", () => ({
@@ -106,10 +106,9 @@ describe("computeSnapshot edge orchestration", () => {
     expect(rendered.id).toBe("full-default-kind");
     expect(rendered.documentId).toBe("doc-1");
     expect(rendered.snapshot.incremental).toBeNull();
-    expect(renderTikzToSvgAsync).toHaveBeenCalledWith(
-      "\\begin{tikzpicture}\\end{tikzpicture}",
-      expect.objectContaining({ textEngine: null })
-    );
+    expect(renderTikzToSvgAsync).not.toHaveBeenCalled();
+    expect(rendered.snapshot.source).toBe("\\begin{tikzpicture}\\end{tikzpicture}");
+    expect(rendered.diagnostics).toContainEqual(expect.objectContaining({ code: "tex-text-compile-error", severity: "error" }));
 
     const prewarm = await computeSnapshot({
       id: "prewarm-same-source",
@@ -120,8 +119,8 @@ describe("computeSnapshot edge orchestration", () => {
 
     expect(prewarm.snapshot.parseResult).toBeNull();
     expect(prewarm.snapshot.source).toBe("\\begin{tikzpicture}\\end{tikzpicture}");
-    expect(prewarm.diagnostics).toEqual([]);
-    expect(renderTikzToSvgAsync).toHaveBeenCalledTimes(1);
+    expect(prewarm.diagnostics).toContainEqual(expect.objectContaining({ code: "tex-text-compile-error" }));
+    expect(renderTikzToSvgAsync).not.toHaveBeenCalled();
   });
 
   it("returns compute-error diagnostics and clears cached state when full rendering throws", async () => {
@@ -135,7 +134,7 @@ describe("computeSnapshot edge orchestration", () => {
       renderTikzToSvgAsync
     }));
     vi.doMock("tikz-editor/text/mathjax-engine", () => ({
-      createMathJaxNodeTextEngine: vi.fn(async () => null)
+      createMathJaxNodeTextEngine: vi.fn(async () => ({ validate: () => null, measure: () => null, renderFromCache: () => null }))
     }));
     vi.doMock("tikz-editor/parser/index", () => ({
       createIncrementalParseSession: vi.fn(() => ({

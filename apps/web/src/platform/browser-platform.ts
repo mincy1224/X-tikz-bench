@@ -4,6 +4,7 @@ import type {
   PlatformUpdateApi
 } from "@tikz-editor/app/platform/types";
 import type { DocumentFileRef, FileRevision } from "@tikz-editor/app/store/types";
+import type { TexTextResponse } from "tikz-editor/tex/text-protocol";
 import { revisionForText, type LinkedTextReadResult, type LinkedTextWriteResult } from "@tikz-editor/app/linked-file-sync";
 
 type StorageLike = {
@@ -693,6 +694,19 @@ export function createBrowserPlatformAdapter(env: BrowserPlatformEnvironment = {
     },
     updates: mergedEnv.updates,
     latex: {
+      checkPackages: async (names) => {
+        const response = await fetch("/api/latex/packages/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ names }), signal: AbortSignal.timeout(15000) });
+        const payload = await response.json() as { packages?: { name: string; installed: boolean; details?: string }[]; error?: string };
+        if (!response.ok || !Array.isArray(payload.packages)) throw new Error(payload.error ?? "宏包检查失败。");
+        return payload.packages;
+      },
+      compileText: async (batch) => {
+        const response = await fetch("/api/latex/text", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(batch), signal: AbortSignal.timeout(25000) });
+        const payload = await response.json() as TexTextResponse & { error?: string; log?: string };
+        lastLatexCompileLog = payload.log ?? payload.error ?? "";
+        if (!response.ok || payload.environmentKey !== batch.environmentKey || !Array.isArray(payload.results)) throw new Error(payload.error ?? "公式编译结果无效。");
+        return payload;
+      },
       checkAvailable: async () => {
         try {
           const response = await fetch("/api/latex/status", { signal: AbortSignal.timeout(6_000) });

@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
+import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
 
 export type LatexDiagnostic = { file: string; line: number; message: string };
 export type CompileResult = { svg: string; log: string; diagnostics: LatexDiagnostic[]; markers: ObjectMarker[] };
@@ -120,14 +121,21 @@ export async function compileLatex(source: string, config: ServerConfig, request
 }
 
 export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto"): string {
-  if (/\\documentclass(?:\s*\[[^\]]*\])?\s*\{/u.test(source)) return source;
+  const environment = extractTexEnvironment(source);
+  const inferred = inferredMathPackages(source, environment).map((name) => `\\usepackage{${name}}`).join("\n");
+  if (environment.completeDocument) return inferred ? source.slice(0, environment.insertionOffset) + inferred + "\n" + source.slice(environment.insertionOffset) : source;
   const profile = resolveCompileProfile(source, requestedProfile);
-  const extras = [profile === "xelatex" ? "\\usepackage[fontset=fandol]{ctex}" : "",
-    /\\begin\{forest\}/u.test(source) ? "\\usepackage{forest}" : "",
-    /\\begin\{(?:axis|groupplot|semilogxaxis|semilogyaxis|loglogaxis)\}/u.test(source) ? "\\usepackage{pgfplots}\n\\pgfplotsset{compat=1.18}\n\\usepgfplotslibrary{statistics,groupplots}" : "",
-    /\\begin\{circuitikz\}/u.test(source) ? "\\usepackage{circuitikz}" : ""].filter(Boolean).join("\n");
-  const content = /\\begin\{(?:tikzpicture|forest|circuitikz)\}/u.test(source) ? source : `\\begin{tikzpicture}\n${source}\n\\end{tikzpicture}`;
-  return `\\documentclass[tikz,border=2pt]{standalone}\n\\usepackage{tikz}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${extras}\n\\begin{document}\n${content}\n\\end{document}\n`;
+  const explicit = new Set(environment.packages.map((item) => item.name));
+  const defaults: { name: string; options?: string }[] = [{ name: "tikz" }, ...inferredMathPackages(source, environment).map((name) => ({ name }))];
+  if (profile === "xelatex") defaults.push({ name: "ctex", options: "fontset=fandol" });
+  if (/\\begin\{forest\}/u.test(source)) defaults.push({ name: "forest" });
+  const plots = /\\begin\{(?:axis|groupplot|semilogxaxis|semilogyaxis|loglogaxis)\}/u.test(source);
+  if (plots) defaults.push({ name: "pgfplots" });
+  if (/\\begin\{circuitikz\}/u.test(source)) defaults.push({ name: "circuitikz" });
+  const preamble = withDefaultPackages(environment.preamble, defaults);
+  const plotSetup = plots ? `${explicit.has("pgfplots") ? "" : "\\pgfplotsset{compat=1.18}\n"}\\usepgfplotslibrary{statistics,groupplots}` : "";
+  const content = /\\begin\{(?:tikzpicture|forest|circuitikz)\}/u.test(environment.body) ? environment.body : `\\begin{tikzpicture}\n${environment.body}\n\\end{tikzpicture}`;
+  return `\\documentclass[border=2pt]{standalone}\n${preamble}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${plotSetup}\n\\begin{document}\n${content}\n\\end{document}\n`;
 }
 
 export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto"): Promise<PdfCompileResult> {

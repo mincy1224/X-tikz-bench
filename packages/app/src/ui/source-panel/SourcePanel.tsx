@@ -75,6 +75,7 @@ import {
 } from "../source-sync";
 import css from "./SourcePanel.module.css";
 import { formatTikzSource } from "tikz-editor/edit/source-format";
+import { PackagesToolbar } from "./PackagesPanel";
 
 // ── Dynamic configuration compartments ──────────────────────────────────────
 
@@ -1342,7 +1343,7 @@ export function SourcePanel() {
 
   return (
     <div className={css.panel}>
-
+      <PackagesToolbar />
       <div className={[css.editorWrap, editorLineNumbers ? "" : css.hideLineNumbers].filter(Boolean).join(" ")} ref={editorRef} />
 
       {diagnostics.length > 0 && (

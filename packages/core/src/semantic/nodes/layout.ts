@@ -176,7 +176,7 @@ export function resolveNodeLayout(
     baseLineY = measuredText.baselineY;
     midLineY = measuredText.midLineY;
     textRenderInfo = {
-      mode: "mathjax",
+      mode: measuredText.renderer ?? "mathjax",
       cacheKey: measuredText.cacheKey,
       paragraphId: measuredText.paragraphId,
       renderSourceText: measuredText.renderSourceText,

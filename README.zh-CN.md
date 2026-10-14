@@ -15,6 +15,8 @@ TikZ Bench 基于 **Dominik Peters** 的 [TikZ Editor](https://github.com/Domini
 - 字号、颜色、线宽、双端箭头独立尺寸；实时预览、撤销／重做、多选批量编辑。
 - 本地项目自动保存，支持 TeX、SVG、PNG 和 PDF 导出。
 - 同源 MathJax 公式资源，本地 LaTeX／中文 XeLaTeX 编译。
+- 默认 New Computer Modern 和替代 STIX2 数学字体同源打包，可断外网使用。
+- 支持 `\llbracket`、`\rrbracket` 及 `\left…\right` 伸缩双括号；源码上方的“宏包”面板可修改文档宏包和选项，并检查当前 TeX Live 是否安装。
 - 矩阵、流程图、图表、电路等示例。高级 Forest、PGFPlots、Circuitikz 代码通过本地 TeX 编译；直接画布编辑取决于编辑器支持的语法。
 
 ## 从源码一键安装到系统
@@ -40,6 +42,8 @@ TIKZ_TEX_BIN_DIR=/usr/local/texlive/2026/bin/x86_64-linux bash install.sh
 ## 使用与升级
 
 新建项目，输入 TikZ 代码或从工具栏添加图形，选中对象后在右栏修改格式。项目自动保存；高级环境自动在主画布编译，也可使用 **LaTeX 编译预览**。
+
+使用数学宏包时，把声明放在图形前，例如 `\usepackage{mathtools,stmaryrd}`。在源码栏点“宏包”可添加、删除、修改选项和检查安装状态；“应用”一次是一条撤销记录。快速画布可直接使用双括号；真实 TeX 预览和导出仅在需要且没有同名自定义命令时补 `stmaryrd`。常用 `amsmath`、`amsfonts`、`amssymb`、`mathtools`、`cancel`、`braket` 命令走同源 MathJax。已知数学宏包中未适配的文字区域交给本地 TeX；可能影响绘图语义的宏包及自定义定义交给整图 TeX。公式编译失败时保留上次成功画面，可点“重试公式”。软件不上传或安装 `.sty` 文件。
 
 ```bash
 tikz-bench start
@@ -93,5 +97,7 @@ tikz-bench logs
 ```
 
 在源码目录且已有 TeX 工具位于 PATH 时，执行 `node --import tsx scripts/verify-editable-tex.mts`，验证三类高级组件的真实映射和 PDF 导出。安装器复用现有 TeX Live，不替换它。
+
+在目标 Ubuntu 的源码目录运行 `node --import tsx scripts/verify-tex-text.mts`，可用真实 TeX Live 检查双括号字形、局部文字尺寸、缓存复用和中文 XeLaTeX PDF。本机单元与浏览器检查不能替代这一验证。
 
 [移动重构审查记录](design/movement-refactor-review-2026-10-09.md)包含回归和性能结果。测试机上的 1000 对象场景达到选择、持续拖动门槛；松开拖动后，完成渲染仍需约 0.8–1.1 秒。

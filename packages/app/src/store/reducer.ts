@@ -539,6 +539,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         if (!isCurrentPendingRequest && !canApplyIntermediateDragSnapshot) {
           return doc;
         }
+        if (action.textError && isCurrentPendingRequest) return { ...doc, pendingRequestId: null, texTextError: action.textError };
         const previousFigureCount = doc.snapshot.figures.length;
         const validFigureIds = new Set(action.snapshot.figures.map((figure) => figure.id));
         let nextActiveFigureId = doc.activeFigureId;
@@ -560,6 +561,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         return {
           ...doc,
           snapshot: action.snapshot,
+          texTextError: null,
           activeFigureId: nextActiveFigureId,
           hasInitializedFigureSelection,
           pendingRequestId: isCurrentPendingRequest ? null : doc.pendingRequestId,

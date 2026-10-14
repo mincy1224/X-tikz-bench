@@ -16,6 +16,8 @@ TikZ Bench is an independently maintained derivative of [TikZ Editor](https://gi
 - A persistent format painter for matching component types; each gesture is one undo step.
 - Local projects with automatic saving; TeX, SVG, PNG and PDF export.
 - Same-origin MathJax formulas and local LaTeX / Chinese XeLaTeX compilation.
+- New Computer Modern and STIX2 math fonts are bundled for offline use.
+- `\llbracket` and `\rrbracket`, including scalable `\left…\right` forms. The source panel's **Packages** dialog edits document package declarations and checks whether packages are installed in the existing TeX Live.
 - Example matrices, flowcharts, plots and circuits. Advanced Forest, PGFPlots and Circuitikz code uses local TeX compilation; direct canvas editing depends on supported syntax.
 
 ## Install from source
@@ -41,6 +43,8 @@ A fresh installation starts automatically. Open **http://localhost:5173**. Exist
 ## Use and upgrade
 
 Create a project with a required unique name and optional description, then enter TikZ code or add shapes from the toolbar. Select objects to edit the shape/text format panel. Actual dimensions and center coordinates are separate from minimum-size and text-width constraints. Press Esc to cancel a drag; matrix cell editing returns to the whole matrix on Esc, then clears selection on another Esc. Projects save after committed edits. Supported Forest, PGFPlots and Circuitikz environments compile automatically on the main canvas; mapped objects expose source properties and supported data points can be dragged. Custom macro internals and groupplot mappings are not reverse editable. Real TeX mapping acceptance is pending; this is not a claim of arbitrary LaTeX editability.
+
+To use math packages, add declarations before the picture, for example `\usepackage{mathtools,stmaryrd}`. Open **Packages** above the source editor to add or remove packages, edit options, and check availability. The dialog edits the same TikZ source and one Apply is one undo step. Double brackets work in the fast canvas without a declaration; TeX preview and export add `stmaryrd` only when needed and only if you have not defined the commands yourself. Common `amsmath`, `amsfonts`, `amssymb`, `mathtools`, `cancel`, and `braket` commands use bundled MathJax. Unsupported text commands from known math packages use local TeX for their text region; packages or definitions that may change drawing semantics use whole-figure TeX. A failed text compile keeps the last successful drawing and exposes **Retry formula**. No package files are uploaded or installed by the app.
 
 ```bash
 tikz-bench start
@@ -69,6 +73,8 @@ tikz-bench status
 ```
 
 There is no database/schema change and no need to uninstall first. Check `curl -fsS http://127.0.0.1:5173/api/health` and `tikz-bench logs`. With your TeX tools on PATH, run `node --import tsx scripts/verify-editable-tex.mts` from the source checkout to validate the actual Forest/plot/circuit mappings and PDF export.
+
+Run `node --import tsx scripts/verify-tex-text.mts` in the source checkout on the target Ubuntu system to verify actual double-bracket glyphs, local text dimensions, cache reuse, and a Chinese XeLaTeX PDF. Browser and unit checks do not replace that TeX Live 2026 check.
 
 Programs: `/opt/tikz-bench/releases/`. Configuration: `/etc/default/tikz-bench`. Default database: `/var/lib/tikz-bench/tikz-bench.sqlite`. The service listens on `127.0.0.1:5173` by default.
 

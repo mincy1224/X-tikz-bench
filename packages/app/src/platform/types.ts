@@ -1,6 +1,7 @@
 import type { LinkedTextReadResult, LinkedTextWriteResult } from "../linked-file-sync.js";
 import type { DocumentFileRef, FileRevision } from "../store/types.js";
 import type { AppMenuCommandId, AppMenuDefinition, AppMenuItem } from "../app-menu/index.js";
+import type { TexTextBatch, TexTextResponse } from "tikz-editor/tex/text-protocol";
 
 export type MenuCommandOrigin = "menu" | "shortcut" | "context-menu" | "platform";
 
@@ -321,6 +322,8 @@ export type EditorPlatform = {
 };
 
 export type PlatformLatex = {
+  checkPackages?: (names: string[]) => Promise<{ name: string; installed: boolean; details?: string }[]>;
+  compileText?: (batch: TexTextBatch) => Promise<TexTextResponse>;
   checkAvailable: () => Promise<{ available: boolean; details: string }>;
   compileTikzToSvg: (latexDocument: string) => Promise<string>;
   compileEditable?: (source: string, sourceVersion: string) => Promise<{ svg: string; sourceVersion: string; markers: { key: string; anchor: string; x: number; y: number }[] }>;

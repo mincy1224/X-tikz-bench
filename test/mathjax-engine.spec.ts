@@ -603,14 +603,14 @@ describe("mathjax node text engine", () => {
       font: "mathjax-newcm"
     });
     expect(configuredMathJax.loader).toMatchObject({
-      load: ["input/tex", "custom-extension", "output/svg", "[tex]/color", "[tex]/html"]
+      load: ["input/tex", "custom-extension", "output/svg", "[tex]/color", "[tex]/html", "[tex]/mathtools", "[tex]/cancel", "[tex]/braket"]
     });
     expect((configuredMathJax.tex as { macros?: unknown }).macros).toMatchObject({
       RR: "\\mathbb{R}",
       textsc: ["\\style{font-family: serif; font-variant-caps: small-caps}{#1}", 1]
     });
     expect((configuredMathJax.tex as { packages?: unknown }).packages).toMatchObject({
-      "[+]": ["ams", "color", "html"],
+      "[+]": ["ams", "color", "html", "mathtools", "cancel", "braket", "tikz-brackets"],
       "[-]": ["legacy-disable", "noundefined"]
     });
     expect(configuredMathJax.svg).toMatchObject({

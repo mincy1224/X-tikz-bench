@@ -4,6 +4,7 @@ import path from "node:path";
 import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError } from "./latex/compiler.js";
 import { createProject, getProject, initializeProjectStore, listProjects, ProjectInputError, softDeleteProject, updateProject } from "./projects/store.js";
+import { checkTexPackages, compileTextBatch, validateTexTextBatch } from "./latex/text.js";
 
 const config = loadConfig();
 let activeCompiles = 0;
@@ -130,6 +131,26 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       } catch (error) {
         json(response, 422, error instanceof LatexCompileError ? { error: error.message, log: error.log, diagnostics: error.diagnostics } : { error: error instanceof Error ? error.message : String(error) });
       } finally { activeCompiles -= 1; }
+      return;
+    }
+    if (request.method === "POST" && ["/api/latex/packages/check", "/api/latex/text"].includes(url.pathname) && !(request.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
+      json(response, 415, { error: "Content-Type must be application/json." }); return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/latex/packages/check") {
+      const payload = JSON.parse(await body(request, 16384)) as { names?: unknown };
+      if (!Array.isArray(payload.names) || !payload.names.every((name) => typeof name === "string")) { json(response, 400, { error: "Invalid package names." }); return; }
+      try { json(response, 200, { packages: await checkTexPackages(payload.names, config) }); }
+      catch (error) { json(response, 400, { error: String(error) }); }
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/latex/text") {
+      if (activeCompiles >= config.maxConcurrency) { json(response, 429, { error: "Too many compilations in progress." }); return; }
+      const payload: unknown = JSON.parse(await body(request, config.maxSourceBytes));
+      try { validateTexTextBatch(payload); } catch (error) { json(response, 400, { error: String(error) }); return; }
+      activeCompiles++;
+      try { json(response, 200, await compileTextBatch(payload, config)); }
+      catch (error) { json(response, 422, error instanceof LatexCompileError ? { error: error.message, log: error.log, diagnostics: error.diagnostics } : { error: String(error) }); }
+      finally { activeCompiles--; }
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/latex/compile") {

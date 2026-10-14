@@ -19,6 +19,10 @@ import type { EditHandle, SceneFigure } from "tikz-editor/semantic/types";
 import { renderTikzToSvgAsync, type RenderDiagnostic } from "tikz-editor/render/index";
 import type { NodeTextEngine } from "tikz-editor/text/types";
 import type { MathJaxFont } from "tikz-editor/text/mathjax-engine";
+import { extractTexEnvironment, type TexEnvironment } from "tikz-editor/tex/environment";
+import { createHybridTextEngine, TexTextCompileError, type HybridTextEngine } from "tikz-editor/text/hybrid-engine";
+import { getActiveEditorPlatform } from "./platform/current";
+import { sanitizeSvgFragment } from "./ui/svg-sanitize";
 import type { SourcePatch } from "tikz-editor/edit/types";
 import { resolveFigureBoundsState } from "tikz-editor/edit/figure-bounds";
 import { recordProfilingComputeTiming } from "tikz-editor/profiling";
@@ -155,7 +159,8 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
         request.patchBaseRevision ?? null,
         trigger,
         sourceFingerprint,
-        request.renderViewBox ?? null
+        request.renderViewBox ?? null,
+        request.documentId ?? "default"
       );
       const snapshot: SessionSnapshot = {
         source: request.source,
@@ -214,7 +219,7 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
 
     const phases: Record<string, number> = {};
     let phaseStartedAt = performance.now();
-    const maybeTextEngine = getOptionalTextEngine();
+    const maybeTextEngine = getOptionalTextEngine(extractTexEnvironment(request.source), request.documentId);
     const textEngine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
     phases.textEngine = performance.now() - phaseStartedAt;
     phaseStartedAt = performance.now();
@@ -306,7 +311,7 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
       snapshot,
       diagnostics: [
         {
-          code: "compute-error",
+          code: error instanceof TexTextCompileError ? "tex-text-compile-error" : "compute-error",
           message: error instanceof Error ? error.message : String(error),
           severity: "error"
         }
@@ -324,7 +329,8 @@ async function computeSnapshotIncremental(
   patchBaseRevision: number | null,
   trigger: Extract<IncrementalSemanticTrigger, "drag-element" | "drag-handle">,
   sourceFingerprint: string | undefined,
-  renderViewBox: SvgViewBox | null
+  renderViewBox: SvgViewBox | null,
+  documentId: string
 ): Promise<{
   parse: ParseTikzResult;
   semantic: EvaluateTikzResult;
@@ -336,7 +342,7 @@ async function computeSnapshotIncremental(
 }> {
   const phases: Record<string, number> = {};
   let phaseStartedAt = performance.now();
-  const maybeTextEngine = getOptionalTextEngine();
+  const maybeTextEngine = getOptionalTextEngine(extractTexEnvironment(source), documentId);
   const textEngine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
   phases.textEngine = performance.now() - phaseStartedAt;
   phaseStartedAt = performance.now();
@@ -619,7 +625,42 @@ export function setMathJaxFont(font: MathJaxFont): void {
   resolvedTextEngine = null;
 }
 
-function getOptionalTextEngine(): NodeTextEngine | null | Promise<NodeTextEngine | null> {
+const documentTextEngines = new Map<string, Promise<HybridTextEngine>>();
+export function retryTexTextRendering(): void {
+  // An engine may have failed before font resources loaded, or may be using
+  // the TeX-only fallback. Recreate it so retry also recovers those cases.
+  documentTextEngines.clear();
+}
+function getOptionalTextEngine(environment?: TexEnvironment, documentId = "incremental"): NodeTextEngine | null | Promise<NodeTextEngine | null> {
+  if (environment) {
+    const key = `${documentId}:${currentMathJaxFont}:${environment.fingerprint}`;
+    let promise = documentTextEngines.get(key);
+    if (!promise) {
+      const font = currentMathJaxFont;
+      promise = (async () => {
+        let fast: NodeTextEngine;
+        try {
+          const { createMathJaxNodeTextEngine } = await import("tikz-editor/text/mathjax-engine");
+          fast = await createMathJaxNodeTextEngine({ font, environment, scopeKey: documentId });
+          if (!fast) throw new Error("MathJax did not initialize.");
+        } catch (error) {
+          if (environment.route !== "tex-text") throw new TexTextCompileError(`公式字体加载失败：${error instanceof Error ? error.message : String(error)}`);
+          fast = { validate: () => ({ code: "invalid-node-tex", message: "Undefined control sequence" }), measure: () => null, renderFromCache: () => null };
+        }
+        const compile = getActiveEditorPlatform().latex?.compileText;
+        if (environment.route === "tex-figure") return { ...fast, retryFailures() {}, flushPending: () => fast.flushPending?.() ?? Promise.resolve([]) };
+        return createHybridTextEngine(fast, environment, compile ? async (batch) => {
+          const response = await compile(batch);
+          for (const result of response.results) result.payload.body = sanitizeSvgFragment(result.payload.body);
+          return response;
+        } : undefined);
+      })();
+      documentTextEngines.set(key, promise);
+      if (documentTextEngines.size > 8) documentTextEngines.delete(documentTextEngines.keys().next().value!);
+      promise.catch(() => { if (documentTextEngines.get(key) === promise) documentTextEngines.delete(key); });
+    }
+    return promise;
+  }
   if (hasResolvedTextEngine) {
     return resolvedTextEngine;
   }

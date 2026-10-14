@@ -116,6 +116,7 @@ export type FileRevision = {
 export type ExternalChangeStatus = "none" | "changed" | "missing" | "permission-needed" | "error";
 
 export type DocumentSession = {
+  texTextError?: string | null;
   propertyPreviewBaseSource?: string;
   id: string;
   title: string;
@@ -361,7 +362,7 @@ export type EditorAction =
       patchBaseRevision?: number;
     }
   | { type: "COMPUTE_REQUESTED"; requestId: string; documentId?: string }
-  | { type: "SNAPSHOT_READY"; requestId: string; snapshot: SessionSnapshot; documentId?: string }
+  | { type: "SNAPSHOT_READY"; requestId: string; snapshot: SessionSnapshot; documentId?: string; textError?: string }
   | { type: "REORDER_TABS"; fromId: string; toId: string }
   | { type: "SET_RIGHT_SIDEBAR_TAB"; tab: "inspector" | "objects" | "styles" | "assistant" }
   | {

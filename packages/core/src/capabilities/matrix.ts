@@ -1,6 +1,9 @@
 import type { CapabilityMatrix } from "./types.js";
 
 export const capabilityMatrix: CapabilityMatrix = {
+  tex_packages: { parser: "partial", semantic: "not-applicable", svg: "partial", edit: "partial", fixtures: ["tex_packages"], notes: "Shared preamble scanner, source-backed package editing and registered fast/text/figure routes. Arbitrary package semantics require local TeX." },
+  math_double_brackets: { parser: "not-applicable", semantic: "not-applicable", svg: "partial", edit: "partial", fixtures: ["double_brackets"], notes: "Real MathJax delimiter mapping and same-origin NewCM glyphs, including scalable brackets. Source export infers stmaryrd unless shadowed." },
+  tex_text_rendering: { parser: "not-applicable", semantic: "not-applicable", svg: "partial", edit: "partial", fixtures: ["tex_packages"], notes: "Batched local TeX box metrics and SVG in the ordinary canvas. TeX glyph internals are edited as source, not character geometry; real TeX acceptance is required." },
   advanced_forest_source: { parser: "partial", semantic: "not-applicable", svg: "not-applicable", edit: "partial", fixtures: ["advanced_forest"], notes: "Source adapter plus external TeX geometry mapping; real TeX verification is required. Custom macros remain source-only." },
   advanced_pgfplots_source: { parser: "partial", semantic: "not-applicable", svg: "not-applicable", edit: "partial", fixtures: ["advanced_plots"], notes: "Source options and inline coordinates; external TeX rendering/mapping. Group plots and custom data transforms are not fully editable." },
   advanced_circuitikz_source: { parser: "partial", semantic: "not-applicable", svg: "not-applicable", edit: "partial", fixtures: ["advanced_circuit"], notes: "Common component options and direct endpoints; external TeX rendering/mapping. Macro-generated components are source-only." },

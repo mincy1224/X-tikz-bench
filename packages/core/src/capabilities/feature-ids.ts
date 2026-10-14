@@ -90,6 +90,9 @@ export const FEATURE_IDS = [
   "svg_circle",
   "svg_text",
   "advanced_forest_source",
+  "tex_packages",
+  "math_double_brackets",
+  "tex_text_rendering",
   "advanced_pgfplots_source",
   "advanced_circuitikz_source",
   "render_pipeline"

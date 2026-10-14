@@ -8,6 +8,7 @@ import { CanvasPanel } from "./canvas-panel/CanvasPanel";
 import { FigureNavigator } from "./FigureNavigator";
 import { FormatPanel } from "./format-panel";
 import { AdvancedCanvas } from "./advanced-canvas";
+import { extractTexEnvironment } from "tikz-editor/tex/environment";
 import { EditorRecovery } from "./EditorRecovery";
 import { ObjectsPanel } from "./objects-panel/ObjectsPanel";
 import { StylesPanel } from "./StylesPanel";
@@ -377,7 +378,7 @@ function createInitialModel(): Model {
 
 export function DockLayout({ repeatPreviewModel }: DockLayoutProps) {
   const dispatch = useEditorStore((s) => s.dispatch);
-  const hasAdvanced = useEditorStore((s) => /\\begin\{(?:forest|axis|semilogxaxis|semilogyaxis|loglogaxis|groupplot|circuitikz)\}/u.test(s.source));
+  const hasAdvanced = useEditorStore((s) => /\\begin\{(?:forest|axis|semilogxaxis|semilogyaxis|loglogaxis|groupplot|circuitikz)\}/u.test(s.source) || extractTexEnvironment(s.source).route === "tex-figure");
   const [model, setModel] = useState(createInitialModel);
 
   // Factory — renders panel content for each tab
