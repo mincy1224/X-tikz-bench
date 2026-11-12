@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App } from "@tikz-editor/app";
 import css from "./TikzBench.module.css";
-import { COMPONENT_TEMPLATES } from "./component-templates";
 import { ProjectDialog } from "./ProjectDialog";
 import { CoalescingSaveQueue } from "./coalescing-save-queue";
-import { TemplateArtwork } from "./TemplateArtwork";
 import { TexProof } from "./TexProof";
 import { splitProjectSource } from "tikz-editor/tex/project-source";
+import { extractTexEnvironment } from "tikz-editor/tex/environment";
 import type { ProjectAsset } from "@tikz-editor/app";
 
 type Project = {
@@ -22,6 +21,15 @@ type Project = {
 };
 
 const SAVE_HINT_DISABLED_KEY = "tikz-bench:hide-save-shortcut-hint";
+const PROJECT_FONT_BLOCK = /^% x-tikz-bench: font start\r?\n[\s\S]*?^% x-tikz-bench: font end\r?\n/mu;
+
+function applyTimesNewRoman(source: string): string {
+  const environment = extractTexEnvironment(source);
+  const loadFontspec = environment.packages.some(({ name }) => name === "fontspec") ? "" : "\\usepackage{fontspec}\n";
+  const setup = `% x-tikz-bench: font start\n${loadFontspec}\\setmainfont{Times New Roman}\n% x-tikz-bench: font end\n`;
+  const offset = environment.insertionOffset;
+  return source.slice(0, offset) + (offset && !source.slice(0, offset).endsWith("\n") ? "\n" : "") + setup + source.slice(offset);
+}
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -36,12 +44,9 @@ function navigate(path: string): void {
 }
 
 function ProjectThumbnail({ project }: { project: Project }) {
-  const templateIndex = COMPONENT_TEMPLATES.findIndex((template) => template.name === project.name && template.source === project.source);
   return <div className={css.preview}>{project.thumbnailSvg
     ? <img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(project.thumbnailSvg)} alt="" />
-    : templateIndex >= 0
-      ? <TemplateArtwork index={templateIndex} />
-      : <span>{project.source.split(/\r?\n/u).map((line) => line.trim()).find((line) => line.startsWith("\\draw") || line.startsWith("\\node") || line.startsWith("\\matrix")) ?? "\\begin{tikzpicture}"}</span>}</div>;
+    : <span>{project.source.split(/\r?\n/u).map((line) => line.trim()).find((line) => line.startsWith("\\draw") || line.startsWith("\\node") || line.startsWith("\\matrix")) ?? "\\begin{tikzpicture}"}</span>}</div>;
 }
 
 function ProjectHome() {
@@ -99,10 +104,6 @@ function ProjectHome() {
         </div>
       </header>
       <section className={css.content}>
-        <div className={css.sectionHeading}><h2>从组件开始</h2><span>复杂组件使用本地 TeX 预览</span></div>
-        <div className={css.templateGrid}>{COMPONENT_TEMPLATES.map((template, index) => <button key={template.name} type="button" className={css.templateCard} onClick={() => { setNewProject({ name: template.name, source: template.source }); }}>
-          <small>{template.category}</small><TemplateArtwork index={index} /><strong>{template.name}</strong><span>{template.mode}</span>
-        </button>)}</div>
         <div className={css.sectionHeading}><h2>Projects</h2><span>{projects.length} projects</span></div>
         {error ? <div className={css.error}>{error}</div> : null}
         {loading ? <div className={css.empty}>Loading projects…</div> : projects.length === 0 ? (
@@ -146,21 +147,24 @@ function ProjectEditor({ id }: { id: string }) {
   const [saveCopy, setSaveCopy] = useState(false);
   const [showTexProof, setShowTexProof] = useState(false);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
+  const [timesNewRoman, setTimesNewRoman] = useState(false);
+  const timesNewRomanRef = useRef(false);
   const sourceTemplate = useRef<ReturnType<typeof splitProjectSource>>(null);
   const fullSource = useCallback((body: string) => {
     const template = sourceTemplate.current;
-    if (!template || /\\begin\{tikzpicture\*?\}/u.test(body)) return body;
-    return `${template.prefix}\n${body}\n${template.suffix}`;
+    const source = !template || /\\begin\{tikzpicture\*?\}/u.test(body) ? body : `${template.prefix}\n${body}\n${template.suffix}`;
+    return timesNewRomanRef.current ? applyTimesNewRoman(source) : source;
   }, []);
   const compileSource = useCallback((source: string) => {
     const template = sourceTemplate.current;
-    if (!template || /\\begin\{document\}/u.test(source)) return source;
+    if (!template || /\\begin\{document\}/u.test(source)) return timesNewRomanRef.current ? applyTimesNewRoman(source) : source;
     const instrumented = splitProjectSource(source);
     if (!instrumented) return fullSource(source);
     const getPictureStart = (prefix: string) => prefix.lastIndexOf("\\begin{tikzpicture");
     const offset = getPictureStart(template.prefix);
     const additions = instrumented.prefix.slice(0, getPictureStart(instrumented.prefix));
-    return `${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`;
+    const document = `${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`;
+    return timesNewRomanRef.current ? applyTimesNewRoman(document) : document;
   }, [fullSource]);
   const saveQueue = useMemo(() => new CoalescingSaveQueue<{ source?: string; name?: string; description?: string; thumbnailSvg?: string }, Project>(async (patch) => {
       const { project: saved } = await api<{ project: Project }>(`/api/projects/${id}`, {
@@ -168,7 +172,8 @@ function ProjectEditor({ id }: { id: string }) {
         body: JSON.stringify({ ...patch, source: patch.source === undefined ? undefined : fullSource(patch.source), expectedRevision: revisionRef.current })
       });
       revisionRef.current = saved.revision;
-      const editable = { ...saved, source: patch.source ?? (splitProjectSource(saved.source)?.body ?? saved.source) };
+      const savedSource = saved.source.replace(PROJECT_FONT_BLOCK, "");
+      const editable = { ...saved, source: patch.source ?? (splitProjectSource(savedSource)?.body ?? savedSource) };
       setProject(editable);
       return editable;
   }), [fullSource, id]);
@@ -183,8 +188,11 @@ function ProjectEditor({ id }: { id: string }) {
 
   useEffect(() => {
     void api<{ project: Project }>(`/api/projects/${id}`).then(({ project: loaded }) => {
-      sourceTemplate.current = splitProjectSource(loaded.source);
-      const source = sourceTemplate.current?.body ?? loaded.source;
+      timesNewRomanRef.current = PROJECT_FONT_BLOCK.test(loaded.source);
+      setTimesNewRoman(timesNewRomanRef.current);
+      const loadedSource = loaded.source.replace(PROJECT_FONT_BLOCK, "");
+      sourceTemplate.current = splitProjectSource(loadedSource);
+      const source = sourceTemplate.current?.body ?? loadedSource;
       setProject({ ...loaded, source }); setDraftSource(source); revisionRef.current = loaded.revision;
     }).catch(() => { navigate("/"); });
   }, [id]);
@@ -237,6 +245,13 @@ function ProjectEditor({ id }: { id: string }) {
     if (localStorage.getItem(SAVE_HINT_DISABLED_KEY) !== "1") setShowSaveHint(true);
   }, []);
 
+  const toggleTimesNewRoman = useCallback(() => {
+    const next = !timesNewRomanRef.current;
+    timesNewRomanRef.current = next;
+    setTimesNewRoman(next);
+    void persist({ source: draftRef.current }).catch(() => {});
+  }, [persist]);
+
   const leaveProject = useCallback(() => {
     if (leavingRef.current) return;
     const currentSource = draftRef.current;
@@ -253,9 +268,10 @@ function ProjectEditor({ id }: { id: string }) {
     onBack: leaveProject, onRename: rename, onSourceChange: setDraftSource,
     onSaveShortcut,
     onShowTexProof: () => { setShowTexProof(true); }, compileSource,
+    timesNewRoman, onToggleTimesNewRoman: toggleTimesNewRoman,
     assets, onUploadAsset: uploadAsset,
     onDownloadTex: () => { void download("tex"); }
-  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, project, rename, saveStatus, uploadAsset]);
+  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, project, rename, saveStatus, timesNewRoman, toggleTimesNewRoman, uploadAsset]);
 
   return projectProps ? <>
     <App project={projectProps} />

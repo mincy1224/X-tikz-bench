@@ -78,6 +78,7 @@
 
 .projectBack { border-color: transparent; background: transparent; color: var(--text-muted); }
 .projectBack:hover, .projectExport:hover, .projectProof:hover { background: var(--btn-hover-bg); border-color: var(--accent-btn-border); }
+.projectExport[aria-pressed="true"] { background: var(--btn-hover-bg); border-color: var(--accent); color: var(--accent-dark); }
 .projectBack:active, .projectExport:active, .projectExportPrimary:active, .projectProof:active { transform: translateY(1px); }
 
 .projectProof { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); color: var(--accent-dark); }

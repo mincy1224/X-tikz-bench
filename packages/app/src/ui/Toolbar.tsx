@@ -22,6 +22,12 @@ import css from "./Toolbar.module.css";
 import { FormatPainterButton } from "./format-painter";
 
 const COMMON_SHAPES = ["rectangle", "circle", "ellipse", "isosceles triangle", "diamond", "trapezium", "regular polygon"];
+const ARRAY_PRESETS = [
+  { id: "row-empty", label: "行向量 · 空白格", rows: 1, columns: 3, style: "grid-empty" },
+  { id: "row-text", label: "行向量 · 文字格", rows: 1, columns: 3, style: "grid-text" },
+  { id: "column-empty", label: "列向量 · 空白格", rows: 3, columns: 1, style: "grid-empty" },
+  { id: "column-text", label: "列向量 · 文字格", rows: 3, columns: 1, style: "grid-text" }
+] as const;
 const SHAPE_POPUP_CHOICES = [
   { id: "square", label: "正方形", previewSvg: '<svg viewBox="0 0 32 32"><rect x="6" y="6" width="20" height="20" fill="none" stroke="currentColor"/></svg>' },
   { id: "round-corner rectangle", label: "圆角矩形", previewSvg: '<svg viewBox="0 0 32 32"><rect x="3" y="7" width="26" height="18" rx="4" fill="none" stroke="currentColor"/></svg>' },
@@ -120,12 +126,29 @@ export function Toolbar({ projectMode = false, updateChip = null }: ToolbarProps
     if (popupKind === "shape-picker") {
       return (
         <ToolbarPopupSection title="Shape">
+          {projectMode ? <ToolbarPopupVisualChoiceGrid
+            ariaLabel="数组"
+            choices={ARRAY_PRESETS.map(({ id, label, rows }) => ({
+              id, label,
+              previewSvg: rows === 1
+                ? '<svg viewBox="0 0 32 32"><path d="M4 12h24v8H4z M12 12v8 M20 12v8" fill="none" stroke="currentColor"/></svg>'
+                : '<svg viewBox="0 0 32 32"><path d="M12 4h8v24h-8z M12 12h8 M12 20h8" fill="none" stroke="currentColor"/></svg>'
+            }))}
+            selectedId=""
+            testIdPrefix="toolbar-array-choice"
+            onSelect={(id) => {
+              const preset = ARRAY_PRESETS.find((choice) => choice.id === id);
+              if (!preset) return;
+              dispatch({ type: "SET_ADD_MATRIX_PRESET", rows: preset.rows, columns: preset.columns, style: preset.style });
+              dispatch({ type: "SET_TOOL_MODE", mode: "addMatrix" });
+              setOpenPopupMode(null);
+            }}
+          /> : null}
           <ToolbarPopupVisualChoiceGrid
             choices={SHAPE_POPUP_CHOICES}
             selectedId={selectedAddShape}
             onSelect={(id) => {
               dispatch({ type: "SET_ADD_SHAPE_PRESET", value: id as typeof selectedAddShape });
-              // Activate the shape tool and close popup
               dispatch({ type: "SET_TOOL_MODE", mode: "addShape" });
               setOpenPopupMode(null);
             }}
@@ -376,6 +399,7 @@ export function Toolbar({ projectMode = false, updateChip = null }: ToolbarProps
 
       <div className={css.group}>
         {TOOL_BUTTONS.flatMap((toolDef) => {
+          if (projectMode && (toolDef.mode === "addGrid" || toolDef.mode === "addMatrix")) return [];
           const separator = toolDef.separatorBefore ? <div key={`sep-${toolDef.mode}`} className={css.separator} /> : null;
           // Special handling for bucket and shape buttons
           let button;

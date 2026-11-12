@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -11,8 +12,15 @@ export type CompileResult = { svg: string; log: string; diagnostics: LatexDiagno
 export type PdfCompileResult = { pdf: Buffer; log: string; diagnostics: LatexDiagnostic[] };
 export type CompileProfile = "auto" | "latex" | "xelatex";
 
+const FONT_COMMAND = /\\(?:set(?:main|sans|mono)font|newfontfamily|newfontface|defaultfontfeatures)\b/u;
+
 export function resolveCompileProfile(source: string, profile: CompileProfile = "auto"): "latex" | "xelatex" {
-  return profile === "auto" ? /[\u3400-\u9fff]|\\(?:usepackage(?:\[[^\]]*\])?\{[^}]*\b(?:ctex|fontspec)\b|documentclass(?:\[[^\]]*\])?\{ctex|setmainfont|setsansfont|setmonofont)/u.test(source) ? "xelatex" : "latex" : profile;
+  if (profile !== "auto") return profile;
+  const environment = extractTexEnvironment(source);
+  return /[\u3400-\u9fff]/u.test(source) || FONT_COMMAND.test(source) ||
+    environment.packages.some(({ name }) => name === "ctex" || name === "fontspec") ||
+    environment.commands.some((command) => command.name === "documentclass" && /^ctex/u.test(command.arguments[0] ?? ""))
+    ? "xelatex" : "latex";
 }
 
 function engineArgs(profile: "latex" | "xelatex"): string[] {
@@ -31,10 +39,23 @@ export class LatexCompileError extends Error {
 
 export function parseLatexDiagnostics(log: string): LatexDiagnostic[] {
   const diagnostics: LatexDiagnostic[] = [];
-  for (const line of log.split(/\r?\n/)) {
+  const lines = log.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
     const match = /^(.*?\.tex):(\d+):\s*(.+)$/.exec(line.trim());
     if (!match) continue;
-    diagnostics.push({ file: path.basename(match[1] ?? "input.tex"), line: Number(match[2]), message: match[3] ?? "LaTeX error" });
+    const message = [match[3]];
+    const packageName = /^Package ([\w.-]+) Error:/u.exec(match[3])?.[1];
+    if (packageName) {
+      const prefix = `(${packageName})`;
+      for (let next = index + 1; next < lines.length; next++) {
+        const continuation = lines[next].trimStart();
+        if (!continuation.startsWith(prefix)) break;
+        const text = continuation.slice(prefix.length).trim();
+        if (text) message.push(text);
+      }
+    }
+    diagnostics.push({ file: path.basename(match[1]), line: Number(match[2]), message: message.join(" ") });
     if (diagnostics.length >= 50) break;
   }
   return diagnostics;
@@ -45,7 +66,24 @@ function appendOutput(current: string, chunk: Buffer): string {
   return current + chunk.toString().slice(0, MAX_PROCESS_OUTPUT_BYTES - current.length);
 }
 
-function run(command: string, args: readonly string[], cwd: string, timeoutMs: number, restrictTexIo = false): Promise<{ code: number; output: string }> {
+const windowsFonts = "/mnt/c/Windows/Fonts";
+const useWindowsFonts = process.platform === "linux" && /microsoft/iu.test(os.release()) &&
+  !process.env.FONTCONFIG_FILE && existsSync(`${windowsFonts}/times.ttf`);
+
+async function prepareFontConfig(directory: string): Promise<string | undefined> {
+  if (!useWindowsFonts) return undefined;
+  const file = path.join(directory, "fonts.conf");
+  await writeFile(file, `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <include>/etc/fonts/fonts.conf</include>
+  <dir>${windowsFonts}</dir>
+</fontconfig>
+`, "utf8");
+  return file;
+}
+
+function run(command: string, args: readonly string[], cwd: string, timeoutMs: number, restrictTexIo = false, fontConfig?: string): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, [...args], {
       cwd,
@@ -53,6 +91,7 @@ function run(command: string, args: readonly string[], cwd: string, timeoutMs: n
       windowsHide: true,
       env: restrictTexIo ? {
         ...process.env,
+        ...(fontConfig ? { FONTCONFIG_FILE: fontConfig } : {}),
         openin_any: "p",
         openout_any: "p",
         shell_escape: "f",
@@ -107,8 +146,9 @@ export async function compileLatex(source: string, config: ServerConfig, request
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-"));
   try {
     await stagePngs(directory, pngs);
+    const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
     await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile), "utf8");
-    const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true);
+    const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true, fontConfig);
     const logPath = path.join(directory, "input.log");
     const fullLog = await readFile(logPath, "utf8").catch(() => latex.output);
     const log = fullLog.slice(-MAX_LOG_BYTES);
@@ -120,7 +160,7 @@ export async function compileLatex(source: string, config: ServerConfig, request
     const input = profile === "xelatex" ? "input.xdv" : "input.dvi";
     const dviPath = path.join(directory, input);
     await stat(dviPath);
-    const svg = await run(config.dvisvgmBin, ["--page=1", "--bbox=min", "--exact", "--no-fonts", "--embed-bitmaps", "-o", "output.svg", input], directory, Math.max(1, deadline - Date.now()), true);
+    const svg = await run(config.dvisvgmBin, ["--page=1", "--bbox=min", "--exact", "--no-fonts", "--embed-bitmaps", "-o", "output.svg", input], directory, Math.max(1, deadline - Date.now()), true, fontConfig);
     if (svg.code !== 0) throw new Error(svg.output || "dvisvgm conversion failed.");
     const svgPath = path.join(directory, "output.svg");
     const bitmapBytes = [...(pngs?.values() ?? [])].reduce((sum, data) => sum + data.length, 0);
@@ -163,8 +203,9 @@ export async function compileLatexPdf(source: string, config: ServerConfig, requ
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-pdf-"));
   try {
     await stagePngs(directory, pngs);
+    const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
     await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile), "utf8");
-    const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true);
+    const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true, fontConfig);
     const fullLog = await readFile(path.join(directory, "input.log"), "utf8").catch(() => latex.output);
     const log = fullLog.slice(-MAX_LOG_BYTES);
     const diagnostics = parseLatexDiagnostics(log);
@@ -172,7 +213,7 @@ export async function compileLatexPdf(source: string, config: ServerConfig, requ
       const summary = diagnostics[0] ? `${diagnostics[0].file}:${diagnostics[0].line}: ${diagnostics[0].message}` : "LaTeX compilation failed.";
       throw new LatexCompileError(summary, log, diagnostics);
     }
-    const pdf = await run(config.dvipdfmxBin, ["-q", "-o", "output.pdf", profile === "xelatex" ? "input.xdv" : "input.dvi"], directory, Math.max(1, deadline - Date.now()), true);
+    const pdf = await run(config.dvipdfmxBin, ["-q", "-o", "output.pdf", profile === "xelatex" ? "input.xdv" : "input.dvi"], directory, Math.max(1, deadline - Date.now()), true, fontConfig);
     if (pdf.code !== 0) throw new LatexCompileError(pdf.output || "dvipdfmx conversion failed.", log, diagnostics);
     const output = await readFile(path.join(directory, "output.pdf"));
     if (output.length < 5 || output.subarray(0, 5).toString("ascii") !== "%PDF-") throw new Error("dvipdfmx returned an invalid PDF.");

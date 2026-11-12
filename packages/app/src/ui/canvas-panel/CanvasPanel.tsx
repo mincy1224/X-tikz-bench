@@ -4,6 +4,7 @@ Suspense,
 lazy,
 memo,
 useCallback,
+useContext,
 useEffect,
 useLayoutEffect,
 useMemo,
@@ -51,6 +52,7 @@ import type { AppMenuCommandId } from "../../app-menu";
 import { buildCanvasContextMenuDefinition } from "../../context-menu";
 import { getSharedEditAnalysisSession,getSharedEditAnalysisView } from "../../edit-analysis-manager";
 import { getActiveEditorPlatform } from "../../platform/current";
+import { ProjectIdContext } from "../project-png-images";
 import { GRID_SIZE_MINOR_TARGET_PX } from "../../settings/types";
 import { useSettingsStore } from "../../settings/useSettingsStore";
 import { buildSnapshotEditSourceFingerprint } from "../../source-identity";
@@ -764,6 +766,7 @@ export const CanvasPanel = memo(function CanvasPanel({
   repeatPreviewModel?: SvgRenderModel | null;
 }) {
   const platform = getActiveEditorPlatform();
+  const projectId = useContext(ProjectIdContext);
   const [prefersNonBlinkingTextInsertionIndicator, setPrefersNonBlinkingTextInsertionIndicator] = useState(false);
   const {
     assistantLockReason,
@@ -1843,12 +1846,12 @@ export const CanvasPanel = memo(function CanvasPanel({
     showGuides,
     guides,
     guidePreview,
-    snapModes,
+    snapModes: projectId === null ? snapModes : { ...snapModes, grid: false },
     gridMinorTargetPx,
     canvasTransform,
     svgResult,
     visibleRanges,
-    showGrid,
+    showGrid: projectId === null && showGrid,
     viewportRef,
     svgResultRef,
     canvasTransformRef,
@@ -3878,6 +3881,7 @@ export const CanvasPanel = memo(function CanvasPanel({
   const contextMenuDefinition = useMemo(
     () =>
       buildCanvasContextMenuDefinition({
+        includeGrid: projectId === null,
         includeEditEquationForSingleNode: contextMenuState?.includeEditEquationForSingleNode ?? false,
         nodePositioningAction: contextMenuState?.nodePositioningAction ?? null,
         includePathSubmenuForSingleSelection: contextMenuState?.includePathSubmenuForSingleSelection ?? false,
@@ -3899,7 +3903,8 @@ export const CanvasPanel = memo(function CanvasPanel({
       contextMenuState?.includeMatrixMultiRemoveRow,
       contextMenuState?.includeMatrixMultiInsertColumnLeft,
       contextMenuState?.includeMatrixMultiInsertColumnRight,
-      contextMenuState?.includeMatrixMultiRemoveColumn
+      contextMenuState?.includeMatrixMultiRemoveColumn,
+      projectId
     ]
   );
 
@@ -3934,7 +3939,7 @@ export const CanvasPanel = memo(function CanvasPanel({
         svgModel={svgModel}
         svgLayerHostRef={svgLayerHostRef}
         canvasTransform={canvasTransform}
-        showTransparencyGrid={showTransparencyGrid}
+        showTransparencyGrid={projectId === null && showTransparencyGrid}
         showDocumentBounds={showDocumentBounds}
         svgDiffHints={svgDiffHints}
         forceSvgReplaceAll={forceSvgReplaceAll}

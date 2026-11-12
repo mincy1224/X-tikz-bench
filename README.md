@@ -38,6 +38,10 @@ TIKZ_TEX_BIN_DIR=/usr/local/texlive/2026/bin/x86_64-linux bash install.sh
 
 ## 手动从源码构建并运行（含原生 Windows）
 
+在 Windows PowerShell 进入仓库目录，执行 `npm ci`、`npm run build:full`，再执行 `.\start-windows.cmd`。打开 <http://127.0.0.1:5176/>，用 `Ctrl+C` 停止服务。也可运行 `npm run package:windows`，解压 `release/x-tikz-bench-windows.zip` 后双击 `start-windows.cmd`。ZIP 包含编译好的网页和服务端，运行时使用本机的 Node.js 和 `sqlite3.exe`。命令在当前终端前台运行。Windows 版数据库位于启动目录下的 `data/x-tikz-bench.sqlite`。
+
+Windows 上请把 `sqlite3.exe` 和 TeX Live 的 Windows `bin` 目录加入当前终端的 `PATH`。也可以通过 `TIKZ_SQLITE_BIN` 指定 SQLite 的完整路径。真实校样与 SVG/PDF 导出使用原生 XeLaTeX；PDF 素材预览需要 `pdftocairo.exe` 或 `pdftoppm.exe`。Times New Roman 使用编译端可访问的字体，工作台按钮应用到 XeLaTeX 校样和导出。在 WSL2 中，如果可以读取 `/mnt/c/Windows/Fonts`，XeLaTeX 会使用该目录中已安装的 Windows 字体。
+
 需要 Node.js 22.13+、npm 10.5+ 和 SQLite。真实 TeX 校样及 SVG/PDF 导出需要 TeX Live 2026 提供 `latex`、`xelatex`、`dvisvgm`、`dvipdfmx`、`kpsewhich`，以及 TikZ、standalone、数学包和示例涉及的 PGFPlots、Circuitikz 等包。
 
 ```bash

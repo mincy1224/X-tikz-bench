@@ -4,6 +4,7 @@ import {
   APP_MENU_COMMAND_IDS,
   APP_MENU_DEFINITION,
   filterAppMenuDefinitionForTarget,
+  type AppMenuItem,
   type AppMenuPlatformTarget
 } from "../app-menu";
 import { useEditorStore } from "../store/store";
@@ -161,6 +162,23 @@ function isCanvasViewportFocused(): boolean {
   );
 }
 
+function workbenchMenuItems(items: readonly AppMenuItem[]): AppMenuItem[] {
+  return items.flatMap((item): AppMenuItem[] => {
+    if (item.kind === "submenu") {
+      const children = workbenchMenuItems(item.items);
+      return children.length ? [{ ...item, items: children }] : [];
+    }
+    if (item.kind === "command" && (
+      item.commandId === APP_MENU_COMMAND_IDS.INSERT_MATRIX ||
+      item.commandId === APP_MENU_COMMAND_IDS.INSERT_GRID ||
+      item.commandId === APP_MENU_COMMAND_IDS.TOGGLE_GRID ||
+      item.commandId === APP_MENU_COMMAND_IDS.TOGGLE_TRANSPARENCY_GRID ||
+      item.commandId === APP_MENU_COMMAND_IDS.TOGGLE_SNAP_GRID
+    )) return [];
+    return [item];
+  });
+}
+
 function isEditableShortcutTarget(target: EventTarget | null): target is HTMLElement {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -232,6 +250,8 @@ export type AppProps = {
     onSaveShortcut: () => void;
     onShowTexProof: () => void;
     compileSource: (source: string) => string;
+    timesNewRoman: boolean;
+    onToggleTimesNewRoman: () => void;
     assets: readonly ProjectAsset[];
     onUploadAsset: (file: File) => Promise<ProjectAsset>;
     onDownloadTex: () => void;
@@ -303,7 +323,10 @@ export function App({ project }: AppProps = {}) {
   const menuDefinition = useMemo(
     () => {
       const sections = filterAppMenuDefinitionForTarget(APP_MENU_DEFINITION, menuTarget);
-      return localizeAppMenuDefinition(project ? sections.filter((section) => section.id !== "file") : sections, uiLanguage);
+      return localizeAppMenuDefinition(project
+        ? sections.filter((section) => section.id !== "file" && section.id !== "help")
+          .map((section) => ({ ...section, items: workbenchMenuItems(section.items) }))
+        : sections, uiLanguage);
     },
     [menuTarget, project, uiLanguage]
   );
@@ -1773,8 +1796,8 @@ export function App({ project }: AppProps = {}) {
         }
 
         if (!e.shiftKey && key === "c") {
-          // If canvas is focused, let the native copy event fire there.
-          if (canvasShortcutContext) {
+          // Standalone editors handle native canvas clipboard events.
+          if (canvasShortcutContext && !project) {
             return;
           }
           // If there's a text selection anywhere, let native copy work for it.
@@ -1789,8 +1812,8 @@ export function App({ project }: AppProps = {}) {
         }
 
         if (!e.shiftKey && key === "x") {
-          // If canvas is focused, let the native cut event fire there.
-          if (canvasShortcutContext) {
+          // Standalone editors handle native canvas clipboard events.
+          if (canvasShortcutContext && !project) {
             return;
           }
           // If there's a text selection anywhere, let native cut work for it.
@@ -1846,7 +1869,7 @@ export function App({ project }: AppProps = {}) {
 
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         const shortcutMode = toolModeFromShortcut(key);
-        if (shortcutMode) {
+        if (shortcutMode && !(project && (shortcutMode === "addGrid" || shortcutMode === "addMatrix"))) {
           dispatch({ type: "SET_TOOL_MODE", mode: shortcutMode });
           e.preventDefault();
           return;
@@ -2094,6 +2117,7 @@ export function App({ project }: AppProps = {}) {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" fill="var(--bg-pane)" /><circle cx="15" cy="12" r="2" fill="var(--bg-pane)" /><circle cx="9" cy="18" r="2" fill="var(--bg-pane)" /></svg>
           </button>
           <button type="button" className={css.projectProof} onClick={project.onShowTexProof}>TeX 校样</button>
+          <button type="button" className={css.projectExport} aria-pressed={project.timesNewRoman} title="在 XeLaTeX 校样和导出中使用 Times New Roman" onClick={project.onToggleTimesNewRoman}>Times New Roman</button>
           <button type="button" className={css.projectExport} aria-expanded={showAssets} aria-controls={showAssets ? "project-assets" : undefined} onClick={() => { setShowAssets(!showAssets); }}>素材</button>
           <input hidden ref={pngInput} type="file" multiple accept="image/png,application/pdf,.png,.pdf" aria-label="选择素材" onChange={(event) => {
             const files = Array.from(event.currentTarget.files ?? []);

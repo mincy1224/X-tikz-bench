@@ -35,8 +35,8 @@ export function ProjectShapeProperties() {
     const canEditSize = Boolean(width && height && options?.some((entry) => entry.kind === "flag" && entry.key === "nodes in empty cells"));
     const cell = target.kind === "matrix-cell";
     if (!cell && !canEditSize) return null;
-    return <div className={css.projectObjectBar} role="group" aria-label="矩阵属性">
-      <strong>{cell ? `单元格 ${target.row ?? ""}, ${target.column ?? ""}` : "矩阵布局"}</strong>
+    return <div className={css.projectObjectBar} role="group" aria-label={canEditSize ? "数组属性" : "单元格属性"}>
+      <strong>{cell ? `单元格 ${target.row ?? ""}, ${target.column ?? ""}` : "数组布局"}</strong>
       {canEditSize && width && height ? <>
         {numberInput("格宽", Number(width[1]), (size) => { property(matrixId, "nodes", raw.replace(width[0], `minimum width=${size}pt`)); })}
         {numberInput("格高", Number(height[1]), (size) => { property(matrixId, "nodes", raw.replace(height[0], `minimum height=${size}pt`)); })}

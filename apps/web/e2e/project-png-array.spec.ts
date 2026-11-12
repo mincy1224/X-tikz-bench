@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { crc32, deflateSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
-import { dragBetweenPoints, gotoApp, interactionLayer, readSource, setSource } from "./helpers";
+import { dragBetweenPoints, focusCanvas, gotoApp, interactionLayer, readSource, selectFirstCanvasElement, setSource, waitForHitRegions } from "./helpers";
 import { unzipSync, zipSync, strFromU8, strToU8 } from "fflate";
 
 function transparentPng() {
@@ -96,13 +96,30 @@ test("a project ZIP merges legacy image placements into the editable TikZ body",
   expect(strFromU8(archive["figure.tikz"]).trim()).toBe(source.trim());
 });
 
+test("copy, cut and paste work from the canvas with keyboard shortcuts", async ({ page }) => {
+  await gotoApp(page);
+  await setSource(page, String.raw`\draw (0,0) rectangle (2,1);`);
+  await focusCanvas(page);
+  await selectFirstCanvasElement(page);
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect.poll(async () => (await readSource(page)).match(/\\draw/g)?.length).toBe(2);
+  await waitForHitRegions(page, 2);
+  await selectFirstCanvasElement(page);
+  await page.keyboard.press("ControlOrMeta+x");
+  await expect.poll(async () => (await readSource(page)).match(/\\draw/g)?.length).toBe(1);
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect.poll(async () => (await readSource(page)).match(/\\draw/g)?.length).toBe(2);
+});
+
 test("blank row vector cells accept text and move through the row with Tab", async ({ page }) => {
   await gotoApp(page);
+  await expect(page.getByTestId("menu-section-help")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Matrix", exact: true })).toHaveCount(0);
   await setSource(page, String.raw`\begin{tikzpicture}
 \end{tikzpicture}`);
-  await page.locator('[data-tauri-drag-region] button[aria-label="Matrix"]').first().click();
-  await page.getByRole("combobox", { name: "矩阵布局" }).selectOption("row");
-  await page.getByTestId("toolbar-matrix-picker-cell-1-3").click();
+  await page.getByRole("button", { name: "Shape", exact: true }).click();
+  await page.getByTestId("toolbar-array-choice-row-empty").click();
   await dragBetweenPoints(page, interactionLayer(page), { x: 180, y: 170 }, { x: 180, y: 170 });
   await page.mouse.up();
   await expect.poll(() => readSource(page)).toContain("nodes in empty cells");
@@ -118,7 +135,7 @@ test("blank row vector cells accept text and move through the row with Tab", asy
   await input.press("y");
   await expect.poll(() => readSource(page)).toMatch(/\\relax\{\}x\s*&\s*\\relax\{\}y\s*&/u);
   await input.press("Escape");
-  const matrix = page.getByRole("group", { name: "矩阵属性" });
+  const matrix = page.getByRole("group", { name: "数组属性" });
   await expect(matrix.getByRole("spinbutton", { name: /格宽/ })).toHaveValue("24");
 });
 
@@ -144,10 +161,13 @@ test("XeLaTeX proof downloads the visible artifact and disables stale exports", 
     expect(data.engine).toBe("xelatex");
     expect(data.projectId).toMatch(/^[a-f0-9-]+$/u);
     versions.push(data.sourceVersion);
-    if (data.source === second) await route.fulfill({ status: 422, json: { error: "fixture compilation failed" } });
+    expect(data.source).toContain("\\setmainfont{Times New Roman}");
+    if (data.source.includes(second)) await route.fulfill({ status: 422, json: { error: "fixture compilation failed" } });
     else await route.fulfill({ json: { sourceVersion: data.sourceVersion, svg } });
   });
   await setSource(page, first);
+  await page.getByRole("button", { name: "Times New Roman", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Times New Roman", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "TeX 校样", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "TeX 编译校样" });
   await expect(dialog.getByText("与源码同步")).toBeVisible();

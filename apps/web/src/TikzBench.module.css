@@ -13,14 +13,6 @@
 .sectionHeading h2 { margin: 0; color: #2a2d39; font-size: 17px; font-weight: 690; letter-spacing: -.025em; }
 .sectionHeading span { color: #8a919c; font-size: 12px; }
 
-.templateGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 48px; }
-.templateCard { position: relative; isolation: isolate; min-height: 184px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; overflow: hidden; padding: 18px; border: 1px solid #e4e6e3; border-radius: 17px; background: #fff; color: #282d39; text-align: left; cursor: pointer; box-shadow: 0 2px 9px rgb(35 40 55 / 3%); transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
-.templateCard::before { content: ""; position: absolute; z-index: -1; inset: 42px 13px auto; height: 77px; border: 1px solid #eef0f4; border-radius: 10px; background: #fafbfc; }
-.templateCard svg { align-self: center; width: 112px; height: 77px; margin: 0 0 5px; color: #6675b8; filter: drop-shadow(0 3px 5px rgb(74 86 147 / 9%)); }
-.templateCard:hover { transform: translateY(-3px); border-color: #a4aee5; box-shadow: 0 14px 34px rgb(49 58 103 / 10%); }
-.templateCard small { color: #788295; font-size: 11px; font-weight: 620; letter-spacing: .08em; text-transform: uppercase; }
-.templateCard strong { max-width: 90%; font-size: 19px; font-weight: 690; letter-spacing: -.035em; }
-.templateCard span { padding: 5px 9px; border-radius: 999px; background: #eef0fa; color: #5766b3; font-size: 10px; font-weight: 600; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
 .card { overflow: hidden; border: 1px solid #e4e6e3; border-radius: 17px; background: #fff; cursor: pointer; box-shadow: 0 3px 14px rgb(35 40 55 / 4%); transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
 .card:hover { transform: translateY(-3px); border-color: #b5bee9; box-shadow: 0 16px 36px rgb(49 58 103 / 11%); }
@@ -70,20 +62,16 @@
 .saveHintClose { position: absolute; top: 6px; right: 8px; padding: 4px 7px; color: #8a929d !important; font-size: 18px !important; }
 :global(button:focus-visible), :global(a:focus-visible) { outline: 2px solid #5968c8; outline-offset: 2px; }
 
-@media (max-width: 900px) { .templateGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .hero { align-items: flex-start; flex-direction: column; padding: 26px; } .actions { width: 100%; } .actions button { flex: 1; } .content { width: calc(100% - 32px); margin: 28px auto 48px; } .templateGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 460px) { .templateGrid { grid-template-columns: 1fr; } .hero h1 { font-size: 25px; } }
-@media (prefers-reduced-motion: reduce) { .card, .templateCard, .primary, .secondary { transition: none; } }
+@media (max-width: 760px) { .hero { align-items: flex-start; flex-direction: column; padding: 26px; } .actions { width: 100%; } .actions button { flex: 1; } .content { width: calc(100% - 32px); margin: 28px auto 48px; } }
+@media (max-width: 460px) { .hero h1 { font-size: 25px; } }
+@media (prefers-reduced-motion: reduce) { .card, .primary, .secondary { transition: none; } }
 
 :global(html[data-color-scheme="dark"]) .home { background: radial-gradient(circle at 92% 1%, #303758 0, transparent 29%), #20242d; }
 :global(html[data-color-scheme="dark"]) .hero { background: rgb(35 39 49 / 82%); border-color: #3a4050; }
 :global(html[data-color-scheme="dark"]) .hero h1, :global(html[data-color-scheme="dark"]) .sectionHeading h2 { color: #f0f1f5; }
 :global(html[data-color-scheme="dark"]) .hero p, :global(html[data-color-scheme="dark"]) .sectionHeading span { color: #a0a7b4; }
-:global(html[data-color-scheme="dark"]) .templateCard, :global(html[data-color-scheme="dark"]) .card { background: #2a2f3a; border-color: #414757; color: #f0f1f5; }
-:global(html[data-color-scheme="dark"]) .templateCard::before { background: #292f3b; border-color: #3b4354; }
-:global(html[data-color-scheme="dark"]) .templateCard svg { color: #a4b0ee; }
-:global(html[data-color-scheme="dark"]) .templateCard small, :global(html[data-color-scheme="dark"]) .cardBody time { color: #a2abba; }
-:global(html[data-color-scheme="dark"]) .templateCard span { background: #394266; color: #d6dcff; }
+:global(html[data-color-scheme="dark"]) .card { background: #2a2f3a; border-color: #414757; color: #f0f1f5; }
+:global(html[data-color-scheme="dark"]) .cardBody time { color: #a2abba; }
 :global(html[data-color-scheme="dark"]) .preview { background-color: #242a34; color: #9fa8b6; background-image: radial-gradient(#465063 .65px, transparent .65px); }
 :global(html[data-color-scheme="dark"]) .preview::before { background: #313746; border-color: #4b5262; }
 :global(html[data-color-scheme="dark"]) .empty { background: #282e38; border-color: #4a5261; color: #a7afbd; }

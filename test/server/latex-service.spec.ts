@@ -64,4 +64,12 @@ describe("LaTeX diagnostics", () => {
       { file: "input.tex", line: 12, message: "Undefined control sequence." }
     ]);
   });
+
+  it("keeps the requested font name from a multiline fontspec error", () => {
+    expect(parseLatexDiagnostics([
+      "./input.tex:8: Package fontspec Error:",
+      '(fontspec)                The font "Missing Font" cannot be found.',
+      "l.8 \\begin{document}"
+    ].join("\n"))[0]?.message).toBe('Package fontspec Error: The font "Missing Font" cannot be found.');
+  });
 });

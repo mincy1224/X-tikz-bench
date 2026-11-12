@@ -28,10 +28,10 @@ import type { EditorAction } from "../store/types";
 import {
   buildSelectionPngBase64,
   buildSelectionSvgSync,
-  buildSelectionSvg,
   createClipboardPayload,
   readClipboardPayloadFromDataTransfer,
   readClipboardPayloadFromSystemClipboard,
+  rememberClipboardPayload,
   type ClipboardPasteBehavior,
   type ClipboardReadFailureReason,
   type TikzClipboardPayload,
@@ -60,6 +60,7 @@ type PasteCommandContext = SelectionCommandContext;
 type AlignMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
 type DistributeAxis = "horizontal" | "vertical";
 const DEFAULT_PASTE_OFFSET_PT = 0.25 * PT_PER_CM;
+let previousPaste: { payload: TikzClipboardPayload; count: number } | null = null;
 
 type ActionAvailability = ReturnType<typeof getEditActionAvailability>;
 type TreeCommandTarget = { kind: "root" | "child"; sourceId: string; foreach: boolean };
@@ -90,18 +91,21 @@ export async function copySelection(
     return false;
   }
 
-  const snippets = selectedSnippets(context);
-  if (snippets.length === 0) {
-    return false;
-  }
-  const payload = createClipboardPayload(snippets, options?.pasteBehavior ?? "offset", 0);
+  const payload = createClipboardPayload(selectedSnippets(context), options?.pasteBehavior ?? "offset", 0);
   if (!payload) {
     return false;
   }
-  const svgText = await buildSelectionSvg(payload.snippets);
+  await writeSelectionPayload(payload);
+  return true;
+}
+
+async function writeSelectionPayload(payload: TikzClipboardPayload): Promise<void> {
+  const svgText = buildSelectionSvgSync(payload.snippets);
+  previousPaste = null;
+  rememberClipboardPayload(payload, false);
   const browserWrite = await writeClipboardPayload(payload, { svgText });
   const desktopWrite = await writeDesktopClipboardBundle(payload, svgText);
-  return browserWrite || desktopWrite;
+  if (browserWrite || desktopWrite) rememberClipboardPayload(payload, true);
 }
 
 export function copySelectionToClipboardData(
@@ -122,6 +126,7 @@ export function copySelectionToClipboardData(
   if (!copied) {
     return false;
   }
+  previousPaste = null;
   void writeDesktopClipboardBundle(payload, svgText);
   return true;
 }
@@ -199,10 +204,12 @@ export async function cutSelection(context: SelectionCommandContext): Promise<bo
     return false;
   }
 
-  const didCopy = await copySelection(context, { pasteBehavior: "preserve" });
-  if (!didCopy) {
+  const payload = createClipboardPayload(selectedSnippets(context), "preserve");
+  if (!payload) {
     return false;
   }
+  const clipboardWrite = writeSelectionPayload(payload);
+  if (getActiveEditorPlatform().clipboard?.writeBundle) await clipboardWrite;
   return deleteSelection(context);
 }
 
@@ -210,6 +217,7 @@ export function cutSelectionToClipboardData(
   context: SelectionCommandContext,
   dataTransfer: DataTransfer | null
 ): boolean {
+  if (!canCutSelection(context)) return false;
   const copied = copySelectionToClipboardData(context, dataTransfer, { pasteBehavior: "preserve" });
   if (!copied) {
     return false;
@@ -267,7 +275,10 @@ function runPasteFromPayload(context: PasteCommandContext, payload: TikzClipboar
 
   const refs = selectedStatementRefs(context);
   const anchor = refs.length > 0 ? refs[refs.length - 1] : null;
-  const pasteCount = Math.max(0, Math.floor(payload.pasteCount));
+  const pasteCount = previousPaste?.payload.plainText === payload.plainText &&
+    previousPaste.payload.pasteBehavior === payload.pasteBehavior
+    ? previousPaste.count
+    : Math.max(0, Math.floor(payload.pasteCount));
   const offset = DEFAULT_PASTE_OFFSET_PT * (pasteCount + 1);
   const delta = payload.pasteBehavior === "preserve"
     ? worldPoint(pt(0), pt(0))
@@ -295,20 +306,7 @@ function runPasteFromPayload(context: PasteCommandContext, payload: TikzClipboar
     precomputedResult
   });
 
-  if (payload.pasteBehavior === "offset") {
-    const nextPayload = {
-      ...payload,
-      pasteCount: pasteCount + 1
-    };
-    void buildSelectionSvg(nextPayload.snippets).then(async (svgText) => {
-      const browserWrite = await writeClipboardPayload(nextPayload, { svgText });
-      if (!browserWrite) {
-        await writeDesktopClipboardBundle(nextPayload, svgText);
-        return;
-      }
-      void writeDesktopClipboardBundle(nextPayload, svgText);
-    });
-  }
+  if (payload.pasteBehavior === "offset") previousPaste = { payload, count: pasteCount + 1 };
 
   return true;
 }

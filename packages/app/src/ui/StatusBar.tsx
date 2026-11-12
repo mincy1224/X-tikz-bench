@@ -210,7 +210,7 @@ export function StatusBar({ projectMode = false }: { projectMode?: boolean }) {
           </div>
         )}
 
-        <RenderedTooltip content={showGrid ? "Hide grid" : "Show grid"}>
+        {!projectMode && <RenderedTooltip content={showGrid ? "Hide grid" : "Show grid"}>
           <button
             type="button"
             className={[css.iconButton, showGrid ? css.iconButtonActive : ""].filter(Boolean).join(" ")}
@@ -220,7 +220,7 @@ export function StatusBar({ projectMode = false }: { projectMode?: boolean }) {
           >
             <RiGridLine size={15} aria-hidden="true" />
           </button>
-        </RenderedTooltip>
+        </RenderedTooltip>}
 
         <RenderedTooltip content="Fit to content">
           <button

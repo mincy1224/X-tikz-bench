@@ -46,6 +46,7 @@
     "build:web": "npm run -w @tikz-editor/web build",
     "build:server": "npm run -w @tikz-editor/server build",
     "build:full": "npm run build:web && npm run build:server",
+    "package:windows": "npm run build:full && node scripts/package-windows.mjs",
     "dev:full": "node scripts/dev-full.mjs",
     "dev:landing": "npm run -w @tikz-editor/landing dev",
     "dev:desktop": "npm run -w @tikz-editor/desktop tauri:dev",

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { useSettingsStore } from "../settings/useSettingsStore";
 import { EDITOR_FONT_SIZE_OPTIONS, type ColorPickerAccuracy, type ColorScheme, type GridSize, type MathJaxFont, type UiLanguage } from "../settings/types";
 import { Modal } from "./Modal";
+import { ProjectIdContext } from "./project-png-images";
 import css from "./SettingsModal.module.css";
 
 type CategoryId = "general" | "editor" | "canvas" | "rendering";
@@ -27,6 +28,7 @@ type SettingsModalProps = {
 };
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
+  const projectId = useContext(ProjectIdContext);
   const [activeCategory, setActiveCategory] = useState<CategoryId>(rememberedCategory);
   const [formatterMaxLineLengthInput, setFormatterMaxLineLengthInput] = useState<string | null>(null);
 
@@ -329,7 +331,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               <div className={css.panel}>
                 <div className={css.panelTitle}>Canvas</div>
                 <div className={css.settingsGroup}>
-                  <div className={css.settingRow}>
+                  {projectId === null && <div className={css.settingRow}>
                     <label className={css.settingLabel} htmlFor="setting-grid-size">
                       Grid Size
                       <span className={css.settingDesc}>Controls how fine or coarse the snap grid is.</span>
@@ -344,7 +346,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                       <option value="standard">Standard</option>
                       <option value="coarse">Coarse</option>
                     </select>
-                  </div>
+                  </div>}
 
                   <div className={css.settingRow}>
                     <label className={css.settingLabel} htmlFor="setting-handle-size">

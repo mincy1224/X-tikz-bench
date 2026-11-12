@@ -489,6 +489,7 @@ function withMatrixCellItems(items: readonly AppMenuItem[]): readonly AppMenuIte
 
 export function buildCanvasContextMenuDefinition(
   options: {
+    includeGrid?: boolean;
     includeEditEquationForSingleNode?: boolean;
     nodePositioningAction?: "position-relative" | "convert-absolute" | null;
     includePathSubmenuForSingleSelection?: boolean;
@@ -541,11 +542,11 @@ export function buildCanvasContextMenuDefinition(
         label: "Fit to Content"
       },
       { kind: "separator" },
-      {
+      ...(options.includeGrid === false ? [] : [{
         kind: "command",
         commandId: APP_MENU_COMMAND_IDS.TOGGLE_GRID,
         label: "Grid"
-      },
+      } as const]),
       {
         kind: "command",
         commandId: APP_MENU_COMMAND_IDS.TOGGLE_RULERS,
@@ -559,7 +560,9 @@ export function buildCanvasContextMenuDefinition(
       {
         kind: "submenu",
         label: "Snapping",
-        items: SNAP_ITEMS
+        items: options.includeGrid === false
+          ? SNAP_ITEMS.filter((item) => item.kind !== "command" || item.commandId !== APP_MENU_COMMAND_IDS.TOGGLE_SNAP_GRID)
+          : SNAP_ITEMS
       }
     ],
     "selection-single": [...selectionSingleItems],

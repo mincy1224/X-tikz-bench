@@ -18,6 +18,19 @@ export type TikzClipboardPayload = {
 
 export type ClipboardReadFailureReason = "unavailable" | "blocked" | "empty" | "invalid";
 
+let lastWrittenPayload: TikzClipboardPayload | null = null;
+let fallbackPayload: TikzClipboardPayload | null = null;
+
+function payloadForPlainText(plainText: string): TikzClipboardPayload | null {
+  return lastWrittenPayload?.plainText === plainText.replace(/\r\n?/g, "\n")
+    ? lastWrittenPayload
+    : parseClipboardPayloadFromPlainText(plainText);
+}
+
+function clipboardUnavailable(reason: "empty" | "unavailable" | "blocked") {
+  return fallbackPayload ? { kind: "success" as const, payload: fallbackPayload } : { kind: "failure" as const, reason };
+}
+
 function logClipboardDebug(message: string, detail?: Record<string, unknown>): void {
   if (typeof console === "undefined" || typeof console.info !== "function") {
     return;
@@ -145,10 +158,10 @@ export function readClipboardPayloadFromDataTransfer(
   }
 
   const plainText = dataTransfer.getData(PLAIN_TEXT_CLIPBOARD_MIME);
-  if (!plainText) {
-    return { kind: "failure", reason: "empty" };
-  }
-  const plainPayload = parseClipboardPayloadFromPlainText(plainText);
+  if (!plainText) return fallbackPayload && dataTransfer.types.length === 0
+    ? { kind: "success", payload: fallbackPayload }
+    : { kind: "failure", reason: "empty" };
+  const plainPayload = payloadForPlainText(plainText);
   if (!plainPayload) {
     return { kind: "failure", reason: "invalid" };
   }
@@ -159,7 +172,7 @@ export async function readClipboardPayloadFromSystemClipboard(): Promise<
   { kind: "success"; payload: TikzClipboardPayload } | { kind: "failure"; reason: ClipboardReadFailureReason }
 > {
   if (typeof navigator === "undefined" || !navigator.clipboard) {
-    return { kind: "failure", reason: "unavailable" };
+    return clipboardUnavailable("unavailable");
   }
 
   if (typeof navigator.clipboard.read === "function") {
@@ -181,7 +194,7 @@ export async function readClipboardPayloadFromSystemClipboard(): Promise<
         if (item.types.includes(PLAIN_TEXT_CLIPBOARD_MIME)) {
           const blob = await item.getType(PLAIN_TEXT_CLIPBOARD_MIME);
           const plainText = await blob.text();
-          const payload = parseClipboardPayloadFromPlainText(plainText);
+          const payload = payloadForPlainText(plainText);
           if (payload) {
             return { kind: "success", payload };
           }
@@ -189,28 +202,29 @@ export async function readClipboardPayloadFromSystemClipboard(): Promise<
         }
       }
 
-      return { kind: "failure", reason: "empty" };
+      return clipboardUnavailable("empty");
     } catch (error) {
       logClipboardDebug("Clipboard read failed or was blocked.", { error: describeError(error) });
-      return { kind: "failure", reason: "blocked" };
+      return clipboardUnavailable("blocked");
     }
   }
 
   if (typeof navigator.clipboard.readText === "function") {
     try {
       const plainText = await navigator.clipboard.readText();
-      const payload = parseClipboardPayloadFromPlainText(plainText);
+      if (!plainText) return clipboardUnavailable("empty");
+      const payload = payloadForPlainText(plainText);
       if (payload) {
         return { kind: "success", payload };
       }
       return { kind: "failure", reason: "invalid" };
     } catch (error) {
       logClipboardDebug("Clipboard readText failed or was blocked.", { error: describeError(error) });
-      return { kind: "failure", reason: "blocked" };
+      return clipboardUnavailable("blocked");
     }
   }
 
-  return { kind: "failure", reason: "unavailable" };
+  return clipboardUnavailable("unavailable");
 }
 
 export async function buildSelectionSvg(snippets: readonly string[]): Promise<string | null> {
@@ -373,10 +387,16 @@ export function writePayloadToDataTransfer(
   }
   try {
     const customText = JSON.stringify(payload);
-    dataTransfer.setData(TIKZ_CLIPBOARD_MIME, customText);
     dataTransfer.setData(PLAIN_TEXT_CLIPBOARD_MIME, payload.plainText);
-    if (typeof options.svgText === "string" && options.svgText.trim().length > 0) {
-      dataTransfer.setData(SVG_CLIPBOARD_MIME, options.svgText);
+    lastWrittenPayload = payload;
+    fallbackPayload = null;
+    try {
+      dataTransfer.setData(TIKZ_CLIPBOARD_MIME, customText);
+      if (typeof options.svgText === "string" && options.svgText.trim().length > 0) {
+        dataTransfer.setData(SVG_CLIPBOARD_MIME, options.svgText);
+      }
+    } catch (error) {
+      logClipboardDebug("Rich clipboard formats are unavailable.", { error: describeError(error) });
     }
     return true;
   } catch (error) {
@@ -468,4 +488,13 @@ export async function writeClipboardPayload(
 
   logClipboardDebug("Clipboard write failed: no supported write method.");
   return false;
+}
+
+export function rememberClipboardPayload(payload: TikzClipboardPayload, copiedToSystem: boolean): void {
+  if (!copiedToSystem) {
+    lastWrittenPayload = payload;
+    fallbackPayload = payload;
+  } else if (lastWrittenPayload === payload) {
+    fallbackPayload = null;
+  }
 }
