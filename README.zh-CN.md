@@ -1,10 +1,10 @@
-# TikZ Bench
+# X-TikZ Bench
 
 [English](README.md)
 
 本地自托管的 TikZ 可视化工作台。在画布或源码编辑器中修改支持的图形，项目以 TikZ 源码保存。
 
-TikZ Bench 基于 **Dominik Peters** 的 [TikZ Editor](https://github.com/DominikPeters/tikz-editor) 修改并独立维护，保留原项目的解析与渲染基础，增加本地项目管理、格式编辑和系统安装支持。
+X-TikZ Bench 基于 **Dominik Peters** 的 [TikZ Editor](https://github.com/DominikPeters/tikz-editor) 修改并独立维护，保留原项目的解析与渲染基础，增加本地项目管理、格式编辑和系统安装支持。
 
 ## 功能
 
@@ -30,7 +30,7 @@ TikZ Bench 基于 **Dominik Peters** 的 [TikZ Editor](https://github.com/Domini
 bash install.sh
 ```
 
-无需手工构建或打包。脚本通过 apt 补齐缺失的非 TeX 工具，执行 `npm ci`、构建前端和服务端，在服务隔离环境下检查编译，然后安装 `tikz-bench` 系统命令和 systemd 服务。构建需要 Node.js 22.13+ 和 npm 10.5+；已有 Node.js 版本过低时需先更新。
+无需手工构建或打包。脚本通过 apt 补齐缺失的非 TeX 工具，执行 `npm ci`、构建前端和服务端，在服务隔离环境下检查编译，然后安装 `x-tikz-bench` 系统命令和 systemd 服务。构建需要 Node.js 22.13+ 和 npm 10.5+；已有 Node.js 版本过低时需先更新。
 
 现有 TeX 需要提供 `latex`、`xelatex`、`dvisvgm`、`dvipdfmx` 和 `kpsewhich`，包含 TikZ、standalone、Forest、PGFPlots、Circuitikz、ctex、fontspec 和 Fandol 字体。中文系统字体缺失时通过 apt 补齐。也可以显式指定 TeX 路径：
 
@@ -38,7 +38,7 @@ bash install.sh
 TIKZ_TEX_BIN_DIR=/usr/local/texlive/2026/bin/x86_64-linux bash install.sh
 ```
 
-全新安装后自动启动，在浏览器打开 **http://localhost:5173**。已有安装保留配置、项目数据和原服务状态，**无需先删除旧版**。检查失败时恢复旧程序与配置。真实 Ubuntu／systemd／TeX Live 2026 验收尚待完成。
+全新安装后自动启动，在浏览器打开 **http://localhost:5175**。`x-tikz-bench` 使用独立配置和项目数据库，可以和旧版 `tikz-bench` 并行运行。升级新版时保留其配置、项目数据和服务状态，检查失败时恢复升级前的程序与配置。真实 Ubuntu／systemd／TeX Live 2026 验收尚待完成。
 
 ## 使用与升级
 
@@ -47,20 +47,20 @@ TIKZ_TEX_BIN_DIR=/usr/local/texlive/2026/bin/x86_64-linux bash install.sh
 使用数学宏包时，把声明放在图形前，例如 `\usepackage{mathtools,stmaryrd}`。在源码栏点“宏包”可添加、删除、修改选项和检查安装状态；“应用”一次是一条撤销记录。快速画布可直接使用双括号；真实 TeX 预览和导出仅在需要且没有同名自定义命令时补 `stmaryrd`。常用 `amsmath`、`amsfonts`、`amssymb`、`mathtools`、`cancel`、`braket` 命令走同源 MathJax。已知数学宏包中未适配的文字区域交给本地 TeX；可能影响绘图语义的宏包及自定义定义交给整图 TeX。公式编译失败时保留上次成功画面，可点“重试公式”。软件不上传或安装 `.sty` 文件。
 
 ```bash
-tikz-bench start
-tikz-bench status
-tikz-bench stop
-tikz-bench restart
-tikz-bench logs
-tikz-bench version
-tikz-bench backup ./projects-backup.sqlite
-tikz-bench upgrade /path/to/tikz-bench-source
-tikz-bench rollback
+x-tikz-bench start
+x-tikz-bench status
+x-tikz-bench stop
+x-tikz-bench restart
+x-tikz-bench logs
+x-tikz-bench version
+x-tikz-bench backup ./projects-backup.sqlite
+x-tikz-bench upgrade /path/to/x-tikz-bench-source
+x-tikz-bench rollback
 ```
 
-升级时，在源码仓库运行 `git pull --ff-only`，再执行 `bash install.sh`。也可运行 `tikz-bench upgrade /path/to/tikz-bench-source`，构建并安装指定源码目录。`rollback` 切换程序，不覆盖数据库；备份命令恢复服务原先的运行／停止状态。
+升级时，在源码仓库运行 `git pull --ff-only`，再执行 `bash install.sh`。也可运行 `x-tikz-bench upgrade /path/to/x-tikz-bench-source`，构建并安装指定源码目录。`rollback` 切换程序，不覆盖数据库；备份命令恢复服务原先的运行／停止状态。
 
-程序目录：`/opt/tikz-bench/releases/`。配置：`/etc/default/tikz-bench`。默认数据库：`/var/lib/tikz-bench/tikz-bench.sqlite`。服务默认监听 `127.0.0.1:5173`。
+程序目录：`/opt/x-tikz-bench/releases/`。配置：`/etc/default/x-tikz-bench`。默认数据库：`/var/lib/x-tikz-bench/x-tikz-bench.sqlite`。服务默认监听 `127.0.0.1:5175`。
 
 源码栏上方点“TeX 对照”，对比当前活动图形的草稿快照和本地 TeX。可切换叠加／快速画布／真实 TeX，调整透明度，缩放平移；点差异列表中的对象可高亮或定位到画布。三处 TeX 世界坐标标记保留真实尺寸和位置，不通过拉伸两个包围盒对齐。差异单位为 pt，可设置容差；未取得映射的项显示“—”。临时标记不会写回源码。对照期间草稿改变时保留原快照，并禁止定位旧对象。边界包含箭头路径、不计描边外扩，并非逐像素差异检测。在目标环境运行 `node --import tsx scripts/verify-tex-comparison.mts` 检查真实 TeX 标记，再在浏览器核对字形、基线和坐标对齐；开发机没有 TeX，TeX Live 2026 实测仍待完成。
 
@@ -72,7 +72,7 @@ tikz-bench rollback
 
 ## 许可证
 
-采用 MIT 许可证；[LICENSE](LICENSE) 保留原作者的版权及许可声明。[NOTICE.md](NOTICE.md) 说明项目来源与修改内容。TikZ Bench 独立维护，这些修改不代表原作者认可或参与维护。打包的第三方组件保留各自的许可证。
+采用 MIT 许可证；[LICENSE](LICENSE) 保留原作者的版权及许可声明。[NOTICE.md](NOTICE.md) 说明项目来源与修改内容。X-TikZ Bench 独立维护，这些修改不代表原作者认可或参与维护。打包的第三方组件保留各自的许可证。
 
 ## 本次重构的安装与验证
 
@@ -80,23 +80,23 @@ tikz-bench rollback
 
 Forest、PGFPlots 和 Circuitikz 自动在主画布编译，已支持的对象通过源码映射选中编辑。任意自定义宏内部及 groupplot 的反向映射不支持；真实 TeX Live 2026 映射验收仍需目标环境验证。
 
-本次移动重构沿用当前数据库和配置，不修改数据库结构，不新建数据库，也不删除旧库。推送更新后，在 Ubuntu 源码目录执行：
+首次安装会为 `x-tikz-bench` 创建独立的项目数据库。推送更新后，在 Ubuntu 源码目录执行：
 
 ```bash
-cd ~/tikz-bench &&
+cd ~/x-tikz-bench &&
 git pull --ff-only &&
 nvm use 22 &&
 bash install.sh &&
-tikz-bench start &&
-tikz-bench version &&
-tikz-bench status
+x-tikz-bench start &&
+x-tikz-bench version &&
+x-tikz-bench status
 ```
 
 无需手工卸载旧程序。健康检查和日志：
 
 ```bash
-curl -fsS http://127.0.0.1:5173/api/health
-tikz-bench logs
+curl -fsS http://127.0.0.1:5175/api/health
+x-tikz-bench logs
 ```
 
 在源码目录且已有 TeX 工具位于 PATH 时，执行 `node --import tsx scripts/verify-editable-tex.mts`，验证三类高级组件的真实映射和 PDF 导出。安装器复用现有 TeX Live，不替换它。

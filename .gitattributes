@@ -3,3 +3,4 @@
 *.sh text eol=lf
 *.service text eol=lf
 scripts/tikz-bench text eol=lf
+scripts/x-tikz-bench text eol=lf

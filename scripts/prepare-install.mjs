@@ -17,8 +17,7 @@ await copy("apps/server/dist", "apps/server/dist");
 await writeFile(path.join(target, "apps/server/package.json"), JSON.stringify({ type: "module", version, private: true }, null, 2) + "\n");
 for (const file of ["LICENSE", "NOTICE.md"]) await copy(file, file);
 await copy("scripts/install-release.sh", "install.sh");
-await copy("scripts/tikz-bench-cli.sh", "scripts/tikz-bench");
-for (const file of ["manage-release.sh", "verify-runtime.mjs", "tikz-bench.service"]) await copy(`scripts/${file}`, `scripts/${file}`);
+for (const file of ["manage-release.sh", "verify-runtime.mjs", "x-tikz-bench", "x-tikz-bench.service"]) await copy(`scripts/${file}`, `scripts/${file}`);
 await writeFile(path.join(target, "manifest.json"), JSON.stringify({ schema: 1, version, builtAt: new Date().toISOString(), target: "linux", nodeMinimum: 18, tex: "existing-texlive", sourceVersion: packageInfo.version }, null, 2) + "\n");
 const licenses = path.join(target, "licenses");
 await mkdir(licenses, { recursive: true });
@@ -43,8 +42,8 @@ async function walk(directory, relative = "") {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) await walk(full, rel);
     else if (entry.isFile()) {
-      if (rel.endsWith(".sh") || rel.endsWith(".service") || rel === "scripts/tikz-bench") await writeFile(full, (await readFile(full, "utf8")).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"));
-      if (rel.endsWith(".sh") || rel === "scripts/tikz-bench") await chmod(full, 0o755);
+      if (rel.endsWith(".sh") || rel.endsWith(".service") || rel === "scripts/x-tikz-bench") await writeFile(full, (await readFile(full, "utf8")).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"));
+      if (rel.endsWith(".sh") || rel === "scripts/x-tikz-bench") await chmod(full, 0o755);
       entries.push([rel, createHash("sha256").update(await readFile(full)).digest("hex")]);
     } else throw new Error(`Unexpected entry: ${rel}`);
   }

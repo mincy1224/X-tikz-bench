@@ -1,4 +1,4 @@
-# TikZ Bench 服务（WSL）
+# X-TikZ Bench 服务（WSL）
 
 ## 推荐：安装为系统服务
 
@@ -8,20 +8,20 @@
 bash install.sh
 ```
 
-脚本自动构建并安装系统服务，复用已有完整 TeX Live，不安装或替换 TeX。首次安装自动启动，访问 http://localhost:5173。升级保留配置和数据库，无需先删除旧版。详见根目录 README。
+脚本自动构建并安装 `x-tikz-bench.service`，复用已有完整 TeX Live。首次安装自动启动，访问 http://localhost:5175。新版可与旧版 `tikz-bench` 并行运行，升级新版会保留它自己的配置和数据库。详见根目录 README。
 
 服务端使用原生 ES module；部署目录中的 `apps/server/package.json` 是运行文件的一部分，请勿单独删除。
 
 ```bash
-tikz-bench start
-tikz-bench status
-tikz-bench stop
-tikz-bench restart
-tikz-bench logs
-tikz-bench backup
+x-tikz-bench start
+x-tikz-bench status
+x-tikz-bench stop
+x-tikz-bench restart
+x-tikz-bench logs
+x-tikz-bench backup
 ```
 
-配置位于 `/etc/default/tikz-bench`，数据库位于 `/var/lib/tikz-bench/tikz-bench.sqlite`。修改配置后执行 `tikz-bench restart`。
+配置位于 `/etc/default/x-tikz-bench`，数据库位于 `/var/lib/x-tikz-bench/x-tikz-bench.sqlite`。修改配置后执行 `x-tikz-bench restart`。
 
 在 WSL 中安装依赖后构建并启动：
 
@@ -62,7 +62,7 @@ npm run dev:full
 ```bash
 latex --version
 dvisvgm --version
-curl http://127.0.0.1:5173/api/latex/status
+curl http://127.0.0.1:5175/api/latex/status
 ```
 
 可通过环境变量指定二进制和资源限制：

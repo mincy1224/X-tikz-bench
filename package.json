@@ -1,5 +1,5 @@
 {
-  "name": "tikz-bench",
+  "name": "x-tikz-bench",
   "version": "0.5.2",
   "description": "Private self-hosted visual workspace for TikZ",
   "private": true,

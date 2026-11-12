@@ -1,6 +1,6 @@
 # 从源码构建与系统安装
 
-克隆 TikZ Bench 源码，在仓库根目录执行：
+克隆 X-TikZ Bench 源码，在仓库根目录执行：
 
 ```bash
 bash install.sh
@@ -23,9 +23,9 @@ git pull --ff-only
 bash install.sh
 ```
 
-也可用 `tikz-bench upgrade /path/to/source` 安装已更新的源码目录。该命令不会自行拉取代码。
+也可用 `x-tikz-bench upgrade /path/to/source` 安装已更新的源码目录。该命令不会自行拉取代码。
 
-无需先删除旧版。`tikz-bench rollback` 只切换程序，不覆盖项目数据库。程序版本位于 `/opt/tikz-bench/releases/`，配置位于 `/etc/default/tikz-bench`，默认数据库位于 `/var/lib/tikz-bench/tikz-bench.sqlite`。构建与部署文件清单用于校验，不需要下载或制作安装包。
+`x-tikz-bench rollback` 切换程序版本并保留项目数据库。程序版本位于 `/opt/x-tikz-bench/releases/`，配置位于 `/etc/default/x-tikz-bench`，默认数据库位于 `/var/lib/x-tikz-bench/x-tikz-bench.sqlite`。新版默认监听 `127.0.0.1:5175`，可以与旧版 `tikz-bench` 并行运行。构建与部署文件清单用于校验。
 
 构建目录是仓库内临时的 `.install-build-*`，安装结束清理；安装完成后服务不依赖源码目录或 node_modules。保留源码目录可用于下次 git pull 和升级。重复安装会生成新的构建身份，避免同版本内容变化覆盖旧程序。
 

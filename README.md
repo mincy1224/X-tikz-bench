@@ -26,7 +26,7 @@ bash install.sh
 
 安装器面向 Ubuntu / Debian 及相应的 WSL2 发行版。前置环境为已启用 systemd、Linux 版 Node.js 22.13+、npm 10.5+，以及已安装的完整 TeX Live 2026。Windows 用户请在 WSL2 终端运行。安装器会检查依赖并提示缺失项，不会安装或替换 TeX Live；Node.js / npm 版本过旧时会停止并提示升级。
 
-脚本依次运行 `npm ci --include=dev`、`npm run build`、`npm run build:full`，从当前检出的源码生成部署文件，安装并启动 `tikz-bench` 系统服务。首次安装后访问 <http://localhost:5173/>；已有同名服务时会升级该服务并保留配置、项目数据库和备份。安装过程可能要求输入 sudo 密码。
+脚本依次运行 `npm ci --include=dev`、`npm run build`、`npm run build:full`，从当前检出的源码生成部署文件，安装并启动 `x-tikz-bench.service`。首次安装后访问 <http://localhost:5175/>。新版使用独立命令、服务、配置和数据库，可以与旧版 `tikz-bench` 并行运行。升级 `x-tikz-bench` 会保留新版自己的配置和数据库。安装过程可能要求输入 sudo 密码。
 
 如果 TeX Live 未加入 Linux PATH，可指定实际的二进制目录：
 
@@ -34,7 +34,7 @@ bash install.sh
 TIKZ_TEX_BIN_DIR=/usr/local/texlive/2026/bin/x86_64-linux bash install.sh
 ```
 
-安装后可使用 `tikz-bench status`、`tikz-bench logs`、`tikz-bench restart` 管理服务。详细配置见 [服务端文档](apps/server/README.md)。在其他机器上通过 Git 安装当前改动前，需要先将这一版源码提交并推送到自己的仓库。
+安装后可使用 `x-tikz-bench status`、`x-tikz-bench logs`、`x-tikz-bench restart` 管理服务。详细配置见 [服务端文档](apps/server/README.md)。在其他机器上通过 Git 安装当前改动前，需要先将这一版源码提交并推送到自己的仓库。
 
 ## 手动从源码构建并运行（含原生 Windows）
 

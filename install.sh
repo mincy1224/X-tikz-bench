@@ -9,7 +9,7 @@ while (($#)); do
   esac
 done
 if [[ -n "$database_override" ]]; then
-  [[ "$database_override" == /var/lib/tikz-bench/*.sqlite && "$database_override" != *'..'* && "$database_override" != *$'\n'* && "$database_override" != *'"'* ]] || { echo '数据库必须是 /var/lib/tikz-bench/ 下的 .sqlite 文件；该目录由 systemd 提供写权限'; exit 1; }
+  [[ "$database_override" == /var/lib/x-tikz-bench/*.sqlite && "$database_override" != *'..'* && "$database_override" != *$'\n'* && "$database_override" != *'"'* ]] || { echo '数据库必须是 /var/lib/x-tikz-bench/ 下的 .sqlite 文件；该目录由 systemd 提供写权限'; exit 1; }
 fi
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 [[ -f "$root/package-lock.json" && -f "$root/scripts/prepare-install.mjs" ]] || { echo '请从完整源码仓库运行 install.sh' >&2; exit 1; }
