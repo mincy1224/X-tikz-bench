@@ -16,9 +16,11 @@
 
 ## 从源码一键安装（Linux / WSL2）
 
-`git clone` 后，在仓库根目录执行：
+将源码检出到 Linux 文件系统，再在仓库根目录执行。PDF 素材预览需要 Poppler：
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y poppler-utils
 bash install.sh
 ```
 
@@ -58,18 +60,6 @@ npm run build:full
 浏览器测试可运行 `npm run test:e2e`；在已有 Chrome 的测试机上可设置 `PLAYWRIGHT_CHANNEL=chrome` 后运行 `node scripts/run-web-e2e.mjs chromium project-polyline.spec.ts tex-packages.spec.ts source-panel-layout.spec.ts`。真正的字体、基线和 PDF/SVG 对照必须在装有 TeX Live 的机器上检查。性能目标也应在目标机器的生产构建中测量，不能由单元测试代替。
 
 Windows 开发环境可执行 `npm run verify:tuntex -- test/fixtures/minimal.tex`，通过配置好的 tunTeX 客户端验证真实 XeLaTeX PDF 和 XDV。临时模式只上传一个 TeX 文件；带 PNG 的样例需要独立、可清空的已注册远端项目，并通过 `TIKZ_TUNTEX_ASSET_PROJECT_KEY` 指定它。Web 工作台的生产编译仍使用服务端原生 XeLaTeX 和 dvisvgm。
-
-生产构建的对象规模验收与真实截图审查（PowerShell，从项目根目录运行）：
-
-```powershell
-Set-Location apps/web
-$env:PLAYWRIGHT_CHANNEL='chrome'
-npx playwright test --config profiling/object-scale.config.ts
-$env:TIKZ_VISUAL_REVIEW='1'
-npx playwright test --config playwright.config.ts e2e/workbench-visual.spec.ts --workers=1
-```
-
-性能脚本会验证 2000 对象的选择、拖动帧间隔和提交延迟门槛，并记录 5000 对象压力数据。报告写入 `apps/web/profiling/traces/`；验收关闭 Playwright trace 和 CPU profiling，避免诊断工具改变时间。真实界面截图写入 `design/screenshots/`。当前验证范围和仍待完成的验收见 [验证记录](design/verification-2026-10-15.md)。
 
 ## 来源与许可
 
