@@ -22,17 +22,17 @@
   flex-shrink: 0;
   border-right: 1px solid var(--border-lighter);
   background: color-mix(in srgb, var(--bg-pane) 70%, var(--bg-app));
-  padding: 8px 6px;
+  padding: 14px 10px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 5px;
   overflow-y: auto;
 }
 
 .navItem {
   display: block;
   width: 100%;
-  padding: 5px 10px;
+  padding: 9px 12px;
   text-align: left;
   border: none;
   background: none;
@@ -40,7 +40,7 @@
   font-size: calc(var(--app-ui-scale, 1) * 12px);
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: 8px;
 }
 
 .navItem:hover {
@@ -58,7 +58,7 @@
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px 16px;
+  padding: 20px 22px;
 }
 
 .panel {
@@ -68,7 +68,7 @@
 }
 
 .panelTitle {
-  font-size: calc(var(--app-ui-scale, 1) * 12px);
+  font-size: calc(var(--app-ui-scale, 1) * 13px);
   font-weight: 600;
   color: var(--text);
   padding: 0 2px;
@@ -77,7 +77,7 @@
 .settingsGroup {
   background: var(--settings-card-bg);
   border: 1px solid var(--border-light);
-  border-radius: 6px;
+  border-radius: 11px;
   overflow: hidden;
   margin-bottom: 4px;
 }
@@ -87,7 +87,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 7px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border-lighter);
 }
 
@@ -98,7 +98,7 @@
 .settingLabel {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
   font-size: calc(var(--app-ui-scale, 1) * 12px);
   color: var(--text);
   cursor: pointer;
@@ -108,7 +108,7 @@
   font-size: calc(var(--app-ui-scale, 1) * 11px);
   color: var(--text-faint);
   cursor: default;
-  line-height: 1.35;
+  line-height: 1.5;
 }
 
 .checkbox {
@@ -119,10 +119,10 @@
 
 .select,
 .numberInput {
-  height: 24px;
+  height: 32px;
   padding: 0 8px;
   border: 1px solid var(--settings-control-border);
-  border-radius: 4px;
+  border-radius: 7px;
   background: var(--settings-control-bg);
   color: var(--text);
   font-family: inherit;
@@ -139,8 +139,8 @@
     linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
     linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
   background-position:
-    calc(100% - 10px) 10px,
-    calc(100% - 6px) 10px;
+    calc(100% - 10px) 14px,
+    calc(100% - 6px) 14px;
   background-repeat: no-repeat;
   background-size: 4px 4px;
 }
@@ -244,4 +244,14 @@
   background: var(--btn-hover-bg);
   border-color: var(--border);
   color: var(--text);
+}
+
+@media (max-width: 650px) {
+  .bodyLayout { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; padding: 8px; border-right: 0; border-bottom: 1px solid var(--border-light); overflow-x: auto; flex-shrink: 0; }
+  .navItem { width: auto; flex: 1 0 auto; padding: 8px 10px; text-align: center; white-space: nowrap; }
+  .content { min-height: 0; padding: 16px; }
+  .settingRow { flex-wrap: wrap; gap: 9px; }
+  .settingLabel { flex-basis: 100%; }
+  .select { max-width: 100%; }
 }

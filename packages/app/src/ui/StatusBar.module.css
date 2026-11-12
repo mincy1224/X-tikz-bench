@@ -6,11 +6,11 @@
   gap: 0;
   background: var(--bg-header);
   border-top: 1px solid var(--border);
-  height: 24px;
+  height: 30px;
   flex-shrink: 0;
   font-size: calc(var(--app-ui-scale, 1) * 11px);
   color: var(--text-muted);
-  padding: 0 6px;
+  padding: 0 14px;
   overflow: hidden;
   --status-range-track: color-mix(in srgb, var(--border) 74%, var(--bg-app));
   --status-range-thumb-bg: var(--bg-pane);

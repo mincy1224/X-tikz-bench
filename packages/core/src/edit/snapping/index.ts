@@ -1,6 +1,6 @@
-import { worldPoint } from "../../coords/points.js";
+import { worldBounds, worldPoint } from "../../coords/points.js";
 import { pt } from "../../coords/scalars.js";
-import type { WorldPoint } from "../../coords/points.js";
+import type { WorldBounds, WorldPoint } from "../../coords/points.js";
 import { buildSnapContext, resolveSnapSettings } from "./context.js";
 import { createGapSnapLines, collectGapSnaps } from "./gap-snaps.js";
 import {
@@ -27,6 +27,7 @@ import type {
   SnapHandlePositionInput,
   SnapKeyboardNudgeInput,
   SnapLine,
+  SnapModifiers,
   SnapResult,
   SnapSelectionTranslationInput,
   SnapSettings,
@@ -104,6 +105,41 @@ export function snapHandlePosition(input: SnapHandlePositionInput): SnapResult {
     pointer: input.point,
     referencePoints,
   });
+}
+
+/** Only the sides under the pointer may win a resize snap. */
+export function snapResizePosition(input: {
+  context: SnapContext; point: WorldPoint; bounds: WorldBounds;
+  x?: "min" | "max"; y?: "min" | "max"; modifiers?: SnapModifiers;
+}): SnapResult {
+  const { context, point, bounds, x, y } = input;
+  const settings = context.settings;
+  if (shouldBypassSnapping(settings, input.modifiers)) return { offset: worldPoint(pt(0), pt(0)), snappedPoint: point, lines: [] };
+  const { nearest: alignment } = collectPointAndGridSnaps({ context, settings, selectionPoints: [point], referencePoints: context.referencePoints,
+    enabledAxis: !x ? "y" : !y ? "x" : undefined, thresholdWorld: settings.thresholdPx / context.zoom, clusterBreakWorld: SNAP_CLUSTER_BREAK_PX / context.zoom });
+  const winnerX = x ? alignment.x[0] : undefined, winnerY = y ? alignment.y[0] : undefined;
+  let dx = pt(winnerX?.offset ?? 0), dy = pt(winnerY?.offset ?? 0);
+  const lines: SnapLine[] = [];
+  if (settings.gaps.enabled) {
+    const gapX = winnerX ? undefined : x;
+    const gapY = winnerY ? undefined : y;
+    const nearest = createEmptySnapBuckets();
+    collectGapSnaps({ selectionBounds: bounds, visibleGaps: context.visibleGaps,
+      minOffset: createMinOffset(settings.thresholdPx / context.zoom), nearest, movingEdges: { x: gapX, y: gapY } });
+    const firstX = nearest.x.find((candidate): candidate is GapSnapCandidate => candidate.kind === "gap");
+    const firstY = nearest.y.find((candidate): candidate is GapSnapCandidate => candidate.kind === "gap");
+    if (firstX) dx = pt(firstX.offset);
+    if (firstY) dy = pt(firstY.offset);
+    const snappedBounds = worldBounds(pt(bounds.minX + (x === "min" ? dx : 0)), pt(bounds.minY + (y === "min" ? dy : 0)),
+      pt(bounds.maxX + (x === "max" ? dx : 0)), pt(bounds.maxY + (y === "max" ? dy : 0)));
+    lines.push(...createGapSnapLines(snappedBounds, [firstX, firstY].filter((candidate): candidate is GapSnapCandidate => Boolean(candidate))));
+  }
+  const snappedPoint = worldPoint(pt(point.x + dx), pt(point.y + dy));
+  for (const winner of [winnerX, winnerY]) {
+    if (!winner || winner.kind === "gap" || winner.kind === "grid") continue;
+    lines.push({ type: "pointer", axis: winner.axis, from: winner.to, to: snappedPoint, sourceIds: winner.sourceId ? [winner.sourceId] : undefined });
+  }
+  return { offset: worldPoint(dx, dy), snappedPoint, lines };
 }
 
 export function snapKeyboardNudge(input: SnapKeyboardNudgeInput): SnapResult {

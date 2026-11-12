@@ -7,6 +7,7 @@ import {
   resolveTransformInspectorMutationContextFromOptionEntries
 } from "tikz-editor/edit/property-write-builders";
 import { buildSnapContext, type SnapGuideInput, type SnapLine, type SnapSettingsPatch } from "tikz-editor/edit/snapping";
+import { collectArrangeWorldBounds } from "tikz-editor/edit/scope-bounds";
 import type { ResizeRole } from "tikz-editor/edit/actions";
 import type { EditHandle, SceneElement, ScenePath } from "tikz-editor/semantic/types";
 import type { WorldBounds, WorldPoint } from "../coords/types";
@@ -317,6 +318,7 @@ export function useCanvasHandleInteractions(args: UseCanvasHandleInteractionsArg
         pathElement != null && pathShapeHint == null && !(propertyTarget.kind === "found" && propertyTarget.target.kind === "matrix-statement")
       );
       const frameAspectRatio = aspectRatioForResizeFrame(initialFrame);
+      const proportionalPng = Boolean(pathElement?.projectPng && normalizedRole.includes("-"));
 
       dispatch({ type: "SET_FIT_TO_CONTENT_MODE", active: false });
       setSnapLines([]);
@@ -333,7 +335,13 @@ export function useCanvasHandleInteractions(args: UseCanvasHandleInteractionsArg
         initialFrame,
         initialScopeTransform,
         measurementMode: pathShapeHint === "rectangle" || sourceId.startsWith("scope:") ? "opposite-corner" : "center",
-        preserveAspectDuringResize: isCircleResizeSource,
+        preserveAspectDuringResize: isCircleResizeSource || proportionalPng,
+        snapContext: snapshot.scene && !sourceId.startsWith("scope:") ? buildSnapContext({
+          sceneElements: snapshot.scene.elements,
+          referenceBounds: collectArrangeWorldBounds(snapshot.scene.elements, snapshot.parseResult?.figure.body ?? []),
+          selectedSourceIds: [sourceId],
+          guides: snapGuideInput, settings: snapSettingsPatch, viewportWorld: viewportWorldBounds, zoom: canvasTransform.scale
+        }) : null,
         historyMergeKey: makeMergeKey("drag-resize", `${sourceId}:${normalizedRole}`, event.pointerId)
       });
       logSnapDebug({
@@ -361,6 +369,10 @@ export function useCanvasHandleInteractions(args: UseCanvasHandleInteractionsArg
       snapshot.scene,
       snapshot.source,
       parseOptions,
+      canvasTransform.scale,
+      snapGuideInput,
+      snapSettingsPatch,
+      viewportWorldBounds,
       source,
       svgResult,
       toolMode,

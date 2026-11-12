@@ -4,6 +4,10 @@ import css from "./TikzBench.module.css";
 import { COMPONENT_TEMPLATES } from "./component-templates";
 import { ProjectDialog } from "./ProjectDialog";
 import { CoalescingSaveQueue } from "./coalescing-save-queue";
+import { TemplateArtwork } from "./TemplateArtwork";
+import { TexProof } from "./TexProof";
+import { splitProjectSource } from "tikz-editor/tex/project-source";
+import type { ProjectAsset } from "@tikz-editor/app";
 
 type Project = {
   id: string;
@@ -31,12 +35,21 @@ function navigate(path: string): void {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function ProjectThumbnail({ project }: { project: Project }) {
+  const templateIndex = COMPONENT_TEMPLATES.findIndex((template) => template.name === project.name && template.source === project.source);
+  return <div className={css.preview}>{project.thumbnailSvg
+    ? <img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(project.thumbnailSvg)} alt="" />
+    : templateIndex >= 0
+      ? <TemplateArtwork index={templateIndex} />
+      : <span>{project.source.split(/\r?\n/u).map((line) => line.trim()).find((line) => line.startsWith("\\draw") || line.startsWith("\\node") || line.startsWith("\\matrix")) ?? "\\begin{tikzpicture}"}</span>}</div>;
+}
+
 function ProjectHome() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [newProject, setNewProject] = useState<{ name: string; source?: string } | null>(null);
+  const [newProject, setNewProject] = useState<{ name: string; source?: string; archive?: File } | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const refresh = useCallback(() => {
@@ -48,8 +61,10 @@ function ProjectHome() {
   }, []);
   useEffect(refresh, [refresh]);
 
-  const create = async (name: string, description: string, source?: string) => {
-    const result = await api<{ project: Project }>("/api/projects", {
+  const create = async (name: string, description: string, source?: string, archive?: File) => {
+    const result = archive ? await api<{ project: Project }>(`/api/projects/import?${new URLSearchParams({ name, description })}`, {
+      method: "POST", headers: { "content-type": "application/zip" }, body: archive
+    }) : await api<{ project: Project }>("/api/projects", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description, source })
     });
     navigate(`/project/${result.project.id}`);
@@ -67,26 +82,26 @@ function ProjectHome() {
   return (
     <main className={css.home}>
       <header className={css.hero}>
-        <div><div className={css.brandMark}>TB</div><div><h1>TikZ Bench</h1><p>Your local visual workspace for TikZ.</p></div></div>
+        <div><div className={css.brandMark}>X</div><div><h1>TikZ Bench</h1><p>在画布上编辑，用 TikZ 源码保存。</p></div></div>
         <div className={css.actions}>
-          <input ref={fileInputRef} className={css.hiddenInput} type="file" accept=".tex,application/x-tex" onChange={(event) => {
+          <input ref={fileInputRef} className={css.hiddenInput} type="file" accept=".tex,.tikz,.zip" onChange={(event) => {
             const file = event.target.files?.[0];
             event.currentTarget.value = "";
             if (!file) return;
-            if (!file.name.toLowerCase().endsWith(".tex")) {
-              window.alert("Only .tex files can be imported.");
+            if (/\.zip$/iu.test(file.name)) {
+              setNewProject({ name: file.name.replace(/\.zip$/iu, ""), archive: file });
               return;
             }
-            void file.text().then((source) => { setNewProject({ name: file.name.replace(/\.tex$/iu, ""), source }); }).catch((error_: unknown) => { setError(String(error_)); });
+            void file.text().then((source) => { setNewProject({ name: file.name.replace(/\.(?:tex|tikz)$/iu, ""), source }); }).catch((error_: unknown) => { setError(String(error_)); });
           }} />
-          <button type="button" className={css.secondary} onClick={() => fileInputRef.current?.click()}>Import TeX</button>
+          <button type="button" className={css.secondary} onClick={() => fileInputRef.current?.click()}>导入 TeX / 工程 ZIP</button>
           <button type="button" className={css.primary} onClick={() => { setNewProject({ name: "" }); }}>新建项目</button>
         </div>
       </header>
       <section className={css.content}>
         <div className={css.sectionHeading}><h2>从组件开始</h2><span>复杂组件使用本地 TeX 预览</span></div>
-        <div className={css.templateGrid}>{COMPONENT_TEMPLATES.map((template) => <button key={template.name} type="button" className={css.templateCard} onClick={() => { setNewProject({ name: template.name, source: template.source }); }}>
-          <small>{template.category}</small><strong>{template.name}</strong><span>{template.mode}</span>
+        <div className={css.templateGrid}>{COMPONENT_TEMPLATES.map((template, index) => <button key={template.name} type="button" className={css.templateCard} onClick={() => { setNewProject({ name: template.name, source: template.source }); }}>
+          <small>{template.category}</small><TemplateArtwork index={index} /><strong>{template.name}</strong><span>{template.mode}</span>
         </button>)}</div>
         <div className={css.sectionHeading}><h2>Projects</h2><span>{projects.length} projects</span></div>
         {error ? <div className={css.error}>{error}</div> : null}
@@ -95,7 +110,7 @@ function ProjectHome() {
         ) : (
           <div className={css.grid}>{projects.map((project) => (
             <article key={project.id} className={css.card} onClick={() => { navigate(`/project/${project.id}`); }}>
-              <div className={css.preview}><span>\begin&#123;tikzpicture&#125;</span></div>
+              <ProjectThumbnail project={project} />
               <div className={css.cardBody}><div><h3>{project.name}</h3><time>{new Date(project.updatedAt).toLocaleString()}</time></div>
                 <div className={css.cardActions}>
                 <button type="button" title="Rename project" aria-label={`Rename ${project.name}`} onClick={(event) => {
@@ -112,7 +127,7 @@ function ProjectHome() {
         )}
       </section>
       <footer className={css.footer}>Based on the open-source TikZ Editor by Dominik Peters · MIT License</footer>
-      {newProject ? <ProjectDialog name={newProject.name} onClose={() => { setNewProject(null); }} onSubmit={(name, description) => create(name, description, newProject.source)} /> : null}
+      {newProject ? <ProjectDialog name={newProject.name} onClose={() => { setNewProject(null); }} onSubmit={(name, description) => create(name, description, newProject.source, newProject.archive)} /> : null}
       {editingProject ? <ProjectDialog name={editingProject.name} description={editingProject.description} onClose={() => { setEditingProject(null); }} onSubmit={(name, description) => rename(editingProject, name, description)} /> : null}
     </main>
   );
@@ -126,17 +141,37 @@ function ProjectEditor({ id }: { id: string }) {
   const revisionRef = useRef(0);
   const draftRef = useRef(draftSource);
   draftRef.current = draftSource;
+  const leavingRef = useRef(false);
   const [editInfo, setEditInfo] = useState(false);
   const [saveCopy, setSaveCopy] = useState(false);
+  const [showTexProof, setShowTexProof] = useState(false);
+  const [assets, setAssets] = useState<ProjectAsset[]>([]);
+  const sourceTemplate = useRef<ReturnType<typeof splitProjectSource>>(null);
+  const fullSource = useCallback((body: string) => {
+    const template = sourceTemplate.current;
+    if (!template || /\\begin\{tikzpicture\*?\}/u.test(body)) return body;
+    return `${template.prefix}\n${body}\n${template.suffix}`;
+  }, []);
+  const compileSource = useCallback((source: string) => {
+    const template = sourceTemplate.current;
+    if (!template || /\\begin\{document\}/u.test(source)) return source;
+    const instrumented = splitProjectSource(source);
+    if (!instrumented) return fullSource(source);
+    const getPictureStart = (prefix: string) => prefix.lastIndexOf("\\begin{tikzpicture");
+    const offset = getPictureStart(template.prefix);
+    const additions = instrumented.prefix.slice(0, getPictureStart(instrumented.prefix));
+    return `${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`;
+  }, [fullSource]);
   const saveQueue = useMemo(() => new CoalescingSaveQueue<{ source?: string; name?: string; description?: string; thumbnailSvg?: string }, Project>(async (patch) => {
       const { project: saved } = await api<{ project: Project }>(`/api/projects/${id}`, {
         method: "PATCH", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...patch, expectedRevision: revisionRef.current })
+        body: JSON.stringify({ ...patch, source: patch.source === undefined ? undefined : fullSource(patch.source), expectedRevision: revisionRef.current })
       });
       revisionRef.current = saved.revision;
-      setProject(saved);
-      return saved;
-  }), [id]);
+      const editable = { ...saved, source: patch.source ?? (splitProjectSource(saved.source)?.body ?? saved.source) };
+      setProject(editable);
+      return editable;
+  }), [fullSource, id]);
   const persist = useCallback((patch: { source?: string; name?: string; description?: string; thumbnailSvg?: string }) => {
     setSaveStatus("saving");
     const task = saveQueue.enqueue(patch);
@@ -148,8 +183,17 @@ function ProjectEditor({ id }: { id: string }) {
 
   useEffect(() => {
     void api<{ project: Project }>(`/api/projects/${id}`).then(({ project: loaded }) => {
-      setProject(loaded); setDraftSource(loaded.source); revisionRef.current = loaded.revision;
+      sourceTemplate.current = splitProjectSource(loaded.source);
+      const source = sourceTemplate.current?.body ?? loaded.source;
+      setProject({ ...loaded, source }); setDraftSource(source); revisionRef.current = loaded.revision;
     }).catch(() => { navigate("/"); });
+  }, [id]);
+  useEffect(() => {
+    let active = true;
+    void api<{ assets: ProjectAsset[] }>(`/api/projects/${id}/assets`).then((result) => {
+      if (active) setAssets((current) => [...new Map([...result.assets, ...current].map((asset) => [asset.key, asset])).values()]);
+    }).catch(() => {});
+    return () => { active = false; };
   }, [id]);
 
   useEffect(() => {
@@ -161,9 +205,17 @@ function ProjectEditor({ id }: { id: string }) {
     return () => { window.clearTimeout(timer); };
   }, [draftSource, persist, project, saveStatus]);
 
-  const download = useCallback(async (kind: "tex" | "pdf") => {
+  const uploadAsset = useCallback(async (file: File) => {
+    const { asset } = await api<{ asset: ProjectAsset }>(`/api/projects/${id}/assets?name=${encodeURIComponent(file.name)}`, {
+      method: "POST", headers: { "content-type": file.type === "application/pdf" || /\.pdf$/iu.test(file.name) ? "application/pdf" : "image/png" }, body: file
+    });
+    setAssets((current) => [...new Map([...current, asset].map((item) => [item.key, item])).values()]);
+    return asset;
+  }, [id]);
+
+  const download = useCallback(async (kind: "tex" | "svg" | "pdf", capturedSource = draftRef.current) => {
     const response = await fetch(`/api/projects/${id}/export/${kind}`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source: draftRef.current })
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source: fullSource(capturedSource) })
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({})) as { error?: string };
@@ -174,10 +226,10 @@ function ProjectEditor({ id }: { id: string }) {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${project?.name ?? "tikz-project"}.${kind}`;
+    anchor.download = `${project?.name ?? "tikz-project"}.${blob.type === "application/zip" ? "zip" : kind}`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [id, project?.name]);
+  }, [fullSource, id, project?.name]);
 
   const rename = useCallback(() => { setEditInfo(true); }, []);
 
@@ -185,18 +237,32 @@ function ProjectEditor({ id }: { id: string }) {
     if (localStorage.getItem(SAVE_HINT_DISABLED_KEY) !== "1") setShowSaveHint(true);
   }, []);
 
+  const leaveProject = useCallback(() => {
+    if (leavingRef.current) return;
+    const currentSource = draftRef.current;
+    if (currentSource === project?.source && !saveQueue.busy) {
+      navigate("/");
+      return;
+    }
+    leavingRef.current = true;
+    void persist({ source: currentSource }).then(() => { navigate("/"); }).catch(() => { leavingRef.current = false; });
+  }, [persist, project?.source, saveQueue]);
+
   const projectProps = useMemo(() => project ? {
     id: project.id, name: project.name, source: project.source, saveStatus,
-    onBack: () => { navigate("/"); }, onRename: rename, onSourceChange: setDraftSource,
+    onBack: leaveProject, onRename: rename, onSourceChange: setDraftSource,
     onSaveShortcut,
-    onDownloadTex: () => { void download("tex"); }, onDownloadPdf: () => { void download("pdf"); }
-  } : null, [download, onSaveShortcut, project, rename, saveStatus]);
+    onShowTexProof: () => { setShowTexProof(true); }, compileSource,
+    assets, onUploadAsset: uploadAsset,
+    onDownloadTex: () => { void download("tex"); }
+  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, project, rename, saveStatus, uploadAsset]);
 
   return projectProps ? <>
     <App project={projectProps} />
+    {showTexProof ? <TexProof projectId={id} source={fullSource(draftSource)} onClose={() => { setShowTexProof(false); }} /> : null}
     {editInfo && project ? <ProjectDialog name={project.name} description={project.description} onClose={() => { setEditInfo(false); }} onSubmit={async (name, description) => { await persist({ name, description }); }} /> : null}
     {saveCopy && project ? <ProjectDialog name={`${project.name} draft`} description={project.description} onClose={() => { setSaveCopy(false); }} onSubmit={async (name, description) => {
-      const response = await api<{ project: Project }>("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description, source: draftRef.current }) });
+    const response = await api<{ project: Project }>("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description, source: fullSource(draftRef.current), copyFrom: id }) });
       navigate(`/project/${response.project.id}`);
     }} /> : null}
     {saveStatus === "error" || saveStatus === "conflict" ? <aside className={css.saveHint} role="alert"><span>{saveStatus === "conflict" ? "其他窗口已更新项目，请另存草稿以保留双方内容。" : "草稿未保存"}</span><button type="button" onClick={() => { setSaveCopy(true); }}>另存草稿</button>{saveStatus === "error" ? <button type="button" onClick={() => { setSaveStatus("saving"); void persist({ source: draftRef.current }).catch(() => {}); }}>重试</button> : null}<button type="button" onClick={() => { void download("tex"); }}>下载草稿</button></aside> : null}

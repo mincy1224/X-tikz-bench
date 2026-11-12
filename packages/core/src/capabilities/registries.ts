@@ -1,6 +1,8 @@
 import type { FeatureId } from "./feature-ids.js";
 
 export const parserFeatureRegistry = [
+  "project_array_grid",
+  "project_png",
   "tex_packages",
   "advanced_forest_source", "advanced_pgfplots_source", "advanced_circuitikz_source",
   "path_statement",
@@ -89,6 +91,8 @@ export const parserFeatureRegistry = [
 ] as const satisfies readonly FeatureId[];
 
 export const semanticFeatureRegistry = [
+  "project_array_grid",
+  "project_png",
   "path_statement",
   "scope_statement",
   "foreach_statement",
@@ -181,6 +185,8 @@ export const semanticFeatureRegistry = [
 ] as const satisfies readonly FeatureId[];
 
 export const svgFeatureRegistry = [
+  "project_array_grid",
+  "project_png",
   "tex_packages", "math_double_brackets", "tex_text_rendering", "renderer_comparison",
   "path_statement",
   "scope_statement",
@@ -274,6 +280,8 @@ export const svgFeatureRegistry = [
 ] as const satisfies readonly FeatureId[];
 
 export const editFeatureRegistry = [
+  "project_array_grid",
+  "project_png",
   "tex_packages", "math_double_brackets", "tex_text_rendering", "renderer_comparison",
   "advanced_forest_source", "advanced_pgfplots_source", "advanced_circuitikz_source",
   "path_statement",

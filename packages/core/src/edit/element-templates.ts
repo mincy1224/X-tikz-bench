@@ -3,16 +3,20 @@ import { pt } from "../coords/scalars.js";
 import type { WorldPoint } from "../coords/points.js";
 import type { Span } from "../ast/types.js";
 import { CM_PER_PT, PT_PER_CM, formatNumber } from "./format.js";
+import { projectPngText, type ProjectPng } from "./project-png.js";
+import { arrayGridBorderSource, ARRAY_EMPTY_CELL, ARRAY_GRID_MARKER, MATH_MATRIX_MARKER } from "./matrix-grid-source.js";
 
 export type AnchorReference = {
   nodeName: string;
   nodeSourceId?: string;
   anchor: string;
 };
+export type MatrixInsertPreset = "default" | "math" | "grid-empty" | "grid-text";
 
 export type ElementTemplate =
+  | ({ kind: "projectPng" } & ProjectPng)
   | { kind: "node"; name?: string; text?: string; shape?: string; minimumWidthPt?: number; minimumHeightPt?: number; strokeColor?: string; fillColor?: string }
-  | { kind: "matrix"; rows?: number; columns?: number; matrixKind?: "plain" | "nodes" | "math-nodes"; cells?: string[][] }
+  | { kind: "matrix"; rows?: number; columns?: number; matrixKind?: "plain" | "nodes" | "math-nodes"; cells?: string[][]; preset?: MatrixInsertPreset; name?: string }
   | { kind: "line"; hasArrow?: boolean; to?: WorldPoint; fromAnchor?: AnchorReference; toAnchor?: AnchorReference; strokeColor?: string }
   | { kind: "bezier"; to?: WorldPoint; control1?: WorldPoint; control2?: WorldPoint; strokeColor?: string }
   | { kind: "grid"; corner?: WorldPoint; strokeColor?: string }
@@ -42,13 +46,18 @@ export function generateElementSource(template: ElementTemplate, at: WorldPoint)
   const atCoord = formatPointCm(at);
 
   switch (template.kind) {
+    case "projectPng":
+      return `\\node[inner sep=0pt, outer sep=0pt] at ${atCoord} {${projectPngText(template)}};`;
     case "node": {
       const text = template.text == null ? DEFAULT_NODE_TEXT : sanitizeNodeText(template.text);
       const namePart = formatNodeName(template.name);
       if (template.shape) {
         const hasExplicitShapeSize = template.minimumWidthPt != null || template.minimumHeightPt != null;
         const optionParts = buildNodeOptions(template.strokeColor, template.fillColor, true);
-        optionParts.push(`shape=${template.shape}`);
+        const square = template.shape === "square";
+        const roundCorners = template.shape === "round-corner rectangle";
+        optionParts.push(`shape=${square || roundCorners ? "rectangle" : template.shape}`);
+        if (roundCorners) optionParts.push("rounded corners=4pt");
         if (template.shape === "rectangle split") optionParts.push("rectangle split parts=2", "rectangle split horizontal");
         if (hasExplicitShapeSize) {
           if (template.minimumWidthPt != null) {
@@ -59,7 +68,7 @@ export function generateElementSource(template: ElementTemplate, at: WorldPoint)
           }
         } else {
           optionParts.push(`minimum width=${SHAPE_TOOL_DEFAULT_MINIMUM_WIDTH_CM}cm`);
-          optionParts.push(`minimum height=${SHAPE_TOOL_DEFAULT_MINIMUM_HEIGHT_CM}cm`);
+          optionParts.push(`minimum height=${square ? SHAPE_TOOL_DEFAULT_MINIMUM_WIDTH_CM : SHAPE_TOOL_DEFAULT_MINIMUM_HEIGHT_CM}cm`);
         }
         const content = template.shape === "rectangle split" && template.text == null ? "Left\\nodepart{two} Right" : text;
         return `\\node[${optionParts.join(", ")}]${namePart} at ${atCoord} {${content}};`;
@@ -72,7 +81,8 @@ export function generateElementSource(template: ElementTemplate, at: WorldPoint)
     case "matrix": {
       const rows = Math.max(1, Math.floor(template.rows ?? 2));
       const columns = Math.max(1, Math.floor(template.columns ?? 2));
-      const matrixKind = template.matrixKind ?? "nodes";
+      const grid = template.preset === "grid-empty" || template.preset === "grid-text";
+      const matrixKind = template.preset === "math" ? "math-nodes" : template.matrixKind ?? "nodes";
       const matrixOption = matrixKind === "math-nodes"
         ? "matrix of math nodes"
         : matrixKind === "plain"
@@ -84,12 +94,15 @@ export function generateElementSource(template: ElementTemplate, at: WorldPoint)
         for (let column = 0; column < columns; column += 1) {
           const flatIndex = row * columns + column;
           const explicit = template.cells?.[row]?.[column];
-          cells.push(sanitizeMatrixCellText(explicit ?? spreadsheetLabel(flatIndex)));
+          const content = sanitizeMatrixCellText(explicit ?? (template.preset === "grid-empty" ? "" : template.preset === "math" ? `a_{${row + 1},${column + 1}}` : spreadsheetLabel(flatIndex)));
+          cells.push(grid && !content.trim() ? ARRAY_EMPTY_CELL : content);
         }
         const rowBody = cells.join(" & ");
         bodyRows.push(`${rowBody} \\\\`);
       }
-      return `\\matrix [${matrixOption}] at ${atCoord} {\n  ${bodyRows.join("\n  ")}\n};`;
+      const gridOptions = grid ? `, nodes in empty cells, inner sep=0pt, outer sep=0pt, row sep=0pt, column sep=0pt, nodes={anchor=center, inner sep=0pt, outer sep=0pt, minimum width=24pt, minimum height=24pt}, ${ARRAY_GRID_MARKER}, append after command=${arrayGridBorderSource(rows, columns)}` : "";
+      const mathOptions = template.preset === "math" ? `, left delimiter={(}, right delimiter={)}, row sep=3pt, column sep=6pt, ${MATH_MATRIX_MARKER}` : "";
+      return `\\matrix [${matrixOption}${gridOptions}${mathOptions}]${grid ? formatNodeName(template.name ?? "tb-array") : ""} at ${atCoord} {\n  ${bodyRows.join("\n  ")}\n};`;
     }
 
     case "line": {
@@ -140,11 +153,12 @@ export function generateElementSource(template: ElementTemplate, at: WorldPoint)
   }
 }
 
-export function insertElementIntoSource(source: string, snippet: string, figureSpan?: Span): string {
+export function insertElementIntoSource(source: string, snippet: string, figureSpan?: Span, implicit = false): string {
   const normalizedSnippet = snippet.trim();
   if (normalizedSnippet.length === 0) {
     return source;
   }
+  if (implicit) return `${source}${source && !source.endsWith("\n") ? "\n" : ""}${normalizedSnippet}\n`;
 
   const resolvedEnd = resolveTikzpictureEndToken(source, figureSpan);
   const endToken = resolvedEnd?.token ?? "\\end{tikzpicture}";

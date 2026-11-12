@@ -210,6 +210,7 @@ export type ScenePath = {
   pathAttachment?: ScenePathAttachment;
   origin?: SceneElementOrigin;
   shapeHint?: ScenePathShapeHint | null;
+  projectPng?: { key: string; locked: boolean };
   undecoratedCommands?: ScenePathCommand[];
   style: ResolvedStyle;
   styleChain: StyleChainEntry[];

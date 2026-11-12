@@ -1,9 +1,10 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useContext, useEffect, useRef, type RefObject } from "react";
 import { diffSvgModels, type SvgDiffHints, type SvgPatchOp, type SvgRenderModel } from "tikz-editor/svg/index";
 import { recordProfilingSvgPatchTiming } from "tikz-editor/profiling";
 
 import { SvgDomPatcher } from "./svg-dom-patcher";
 import css from "./CanvasPanel.module.css";
+import { connectProjectPngImages, ProjectIdContext } from "../project-png-images";
 
 export function CanvasSVGLayer(params: {
   model: SvgRenderModel | null;
@@ -18,6 +19,7 @@ export function CanvasSVGLayer(params: {
   const internalHostRef = useRef<HTMLDivElement | null>(null);
   const patcherRef = useRef<SvgDomPatcher | null>(null);
   const previousModelRef = useRef<SvgRenderModel | null>(null);
+  const projectId = useContext(ProjectIdContext);
 
   useEffect(() => {
     const host = internalHostRef.current;
@@ -54,6 +56,7 @@ export function CanvasSVGLayer(params: {
         onFallback("replaceAll");
       }
       patcher.applyOperations(operations);
+      if (projectId && internalHostRef.current && operations.length) connectProjectPngImages(internalHostRef.current, projectId);
       previousModelRef.current = model;
       recordProfilingSvgPatchTiming({
         durationMs: performance.now() - startedAt,
@@ -69,6 +72,7 @@ export function CanvasSVGLayer(params: {
       }
       onFallback("patch-failure");
       patcher.applyOperations([{ kind: "replaceAll", model }]);
+      if (projectId && internalHostRef.current) connectProjectPngImages(internalHostRef.current, projectId);
       previousModelRef.current = model;
       recordProfilingSvgPatchTiming({
         durationMs: performance.now() - startedAt,
@@ -79,7 +83,7 @@ export function CanvasSVGLayer(params: {
         fallbackReason: "patch-failure"
       });
     }
-  }, [diffHints, forceReplaceAll, model, onFallback]);
+  }, [diffHints, forceReplaceAll, model, onFallback, projectId]);
 
   const className = [
     css.svgLayer,

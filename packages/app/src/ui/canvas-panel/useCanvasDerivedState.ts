@@ -4,7 +4,6 @@ import { PT_PER_CM } from "tikz-editor/edit/format";
 import type { ScenePathCommand } from "tikz-editor/semantic/types";
 import type { WorldPoint } from "../coords/types";
 import type { SvgViewBox } from "tikz-editor/svg/types";
-import type { NodeShapePresetId } from "tikz-editor/edit/inspector";
 import type { CanvasTransform, ToolMode } from "../../store/types";
 import { distanceSquared, fmt, worldToSvgPoint, worldToSvgY } from "./geometry";
 import { resolveBezierControlsFromBend } from "./interaction-helpers";
@@ -32,7 +31,7 @@ export type UseCanvasDerivedStateArgs = {
   toolMode: ToolMode;
   toolDraft: Extract<DragState, { kind: "tool-create" }> | null;
   toolCursorWorld: WorldPoint | null;
-  selectedAddShape: Exclude<NodeShapePresetId, "custom">;
+  selectedAddShape: string;
   freehandDraft: FreehandToolDraft | null;
   freehandSmoothingPx: number;
   pathDraft: PathToolDraft | null;

@@ -1307,7 +1307,7 @@ describe("applyEditAction – node relative positioning conversions", () => {
     });
   });
 
-  it("rejects relative positioning that would need a negative distance", () => {
+  it("preserves overlapping nodes through signed relative positioning", () => {
     const source = String.raw`\begin{tikzpicture}
 \node[draw] (A) at (0,0) {A};
 \node[draw] (B) at (0,0) {B};
@@ -1321,9 +1321,39 @@ describe("applyEditAction – node relative positioning conversions", () => {
       targetNodeSourceId: targetId
     });
 
-    expect(result.kind).toBe("unsupported");
-    if (result.kind !== "unsupported") return;
-    expect(result.reason).toContain("negative positioning distance");
+    expect(result.kind).toBe("success");
+    if (result.kind !== "success") return;
+    expect(result.newSource).toMatch(/=-[\d.]+(?:pt|cm) of A/u);
+    expectPointClose(nodeCenter(result.newSource, nodeId), nodeCenter(source, nodeId));
+    expectPatchesReconstructSource(source, result);
+  });
+
+  it("uses the displayed semantic snapshot when the editing text engine is cold", async () => {
+    const textEngine = await createMathJaxNodeTextEngine();
+    const source = String.raw`\begin{tikzpicture}
+\node[draw,inner sep=4pt] (A) at (0,1) {node a};
+\node[draw,inner sep=1pt] (B) at (1.5,0.2) {node b};
+\end{tikzpicture}`;
+    const semantic = evaluateTikzFigure(parseTikz(source).figure, source, { textEngine });
+    const [targetId, nodeId] = pathStatementIds(source);
+    const coldEngine = {
+      validate: () => null,
+      measure: () => { throw new Error("A cold engine must not replace displayed text metrics."); },
+      renderFromCache: () => null
+    };
+    const relative = applyEditAction(source, semantic.editHandles, {
+      kind: "positionNodeRelativeTo", nodeId, targetNodeName: "A", targetNodeSourceId: targetId
+    }, { evaluateOptions: { textEngine: coldEngine }, semanticSnapshot: { source, semantic } });
+    expect(relative.kind).toBe("success");
+    if (relative.kind !== "success") return;
+    const nextSemantic = evaluateTikzFigure(parseTikz(relative.newSource).figure, relative.newSource, { textEngine });
+    const absolute = applyEditAction(relative.newSource, nextSemantic.editHandles, {
+      kind: "convertNodePositionToAbsolute", nodeId
+    }, { evaluateOptions: { textEngine: coldEngine }, semanticSnapshot: { source: relative.newSource, semantic: nextSemantic } });
+    expect(absolute.kind).toBe("success");
+    if (absolute.kind !== "success") return;
+    expect(absolute.newSource).toContain("at (1.5,0.2)");
+    expectPatchesReconstructSource(relative.newSource, absolute);
   });
 
   it("rejects path-attached target nodes", () => {

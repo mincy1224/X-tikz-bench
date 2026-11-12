@@ -42,7 +42,7 @@ const ZH_CN: Record<string, string> = {
   Text: "文本", Width: "宽度", Height: "高度", Rotation: "旋转", Opacity: "不透明度", Color: "颜色",
   Insert: "插入", Shape: "形状", Rectangle: "矩形", Circle: "圆形", Ellipse: "椭圆", Line: "直线",
   Arrow: "箭头", Bezier: "贝塞尔曲线（Bézier）", Freehand: "自由绘制", Node: "节点（Node）", Equation: "公式",
-  Matrix: "矩阵", Path: "路径", "Close Path": "闭合路径", "Open Path": "打开路径",
+  Matrix: "矩阵", Path: "路径", Polyline: "折线", "Close Path": "闭合路径", "Open Path": "打开路径",
   "Join Paths": "连接路径", "Split Path": "拆分路径", "Reverse Path": "反转路径", "Delete Point": "删除控制点",
   "Point to Corner": "转换为角点", "Point to Smooth": "转换为平滑点", Align: "对齐", Distribute: "均匀分布",
   Reorder: "调整层级", Left: "左对齐", Center: "居中", Right: "右对齐", Top: "顶部对齐", Middle: "垂直居中",

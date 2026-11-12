@@ -241,6 +241,22 @@ function buildCanvasOnlyLayout(): IJsonModel {
   };
 }
 
+function buildCompactLayout(): IJsonModel {
+  return {
+    ...buildCanvasOnlyLayout(),
+    borders: [
+      { type: "border", location: "left", selected: -1, size: 280, minSize: 200, maxSize: 420, children: [
+        { type: "tab", id: PANEL_IDS.source, name: "Source", component: "source", enableClose: false }
+      ] },
+      { type: "border", location: "right", selected: -1, size: 270, minSize: 200, maxSize: 420, children: [
+        { type: "tab", id: PANEL_IDS.inspector, name: "Inspector", component: "inspector", enableClose: false },
+        { type: "tab", id: PANEL_IDS.objects, name: "Objects", component: "objects", enableClose: false },
+        { type: "tab", id: PANEL_IDS.styles, name: "Styles", component: "styles", enableClose: false }
+      ] }
+    ]
+  };
+}
+
 function buildWideInspectorLayout(): IJsonModel {
   const rightTabs: Array<{ type: "tab"; id: string; name: string; component: string; enableClose?: boolean }> = [
     { type: "tab", id: PANEL_IDS.inspector, name: "Inspector", component: "inspector" },
@@ -301,10 +317,14 @@ export const BUILT_IN_WORKSPACES: readonly BuiltInWorkspace[] = [
 // ── Sync helpers ──────────────────────────────────────────────────────────────
 
 function syncLayoutStateToStore(model: Model, dispatch: (action: EditorAction) => void) {
-  const sourceVisible = model.getNodeById(PANEL_IDS.source) != null;
-  const inspectorVisible = model.getNodeById(PANEL_IDS.inspector) != null;
-  const objectsVisible = model.getNodeById(PANEL_IDS.objects) != null;
-  const stylesVisible = model.getNodeById(PANEL_IDS.styles) != null;
+  const visible = (id: string) => {
+    const node = model.getNodeById(id), parent = node?.getParent();
+    return node != null && (parent?.getType() !== "border" || isLayoutSelectionParent(parent) && parent.getSelectedNode()?.getId() === id);
+  };
+  const sourceVisible = visible(PANEL_IDS.source);
+  const inspectorVisible = visible(PANEL_IDS.inspector);
+  const objectsVisible = visible(PANEL_IDS.objects);
+  const stylesVisible = visible(PANEL_IDS.styles);
   const figuresVisible = model.getNodeById(PANEL_IDS.figureNavigator) != null;
 
   // Determine active right sidebar tab
@@ -379,7 +399,23 @@ function createInitialModel(): Model {
 export function DockLayout({ repeatPreviewModel }: DockLayoutProps) {
   const dispatch = useEditorStore((s) => s.dispatch);
   const hasAdvanced = useEditorStore((s) => /\\begin\{(?:forest|axis|semilogxaxis|semilogyaxis|loglogaxis|groupplot|circuitikz)\}/u.test(s.source) || extractTexEnvironment(s.source).route === "tex-figure");
-  const [model, setModel] = useState(createInitialModel);
+  const [desktopModel, setDesktopModel] = useState(createInitialModel);
+  const [compactModel, setCompactModel] = useState(() => Model.fromJson(buildCompactLayout()));
+  const [compact, setCompact] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1000px)").matches);
+  const model = compact ? compactModel : desktopModel;
+  const setModel = compact ? setCompactModel : setDesktopModel;
+  const compactModelRef = useRef(compactModel);
+  compactModelRef.current = compactModel;
+  const saveLayoutModel = useCallback((current: Model) => {
+    // Narrow-window panels have their own layout; preserve the user's desktop widths.
+    if (current !== compactModelRef.current) saveDockLayout(current.toJson());
+  }, []);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1000px)");
+    const change = () => { setCompact(query.matches); };
+    query.addEventListener("change", change);
+    return () => { query.removeEventListener("change", change); };
+  }, []);
 
   // Factory — renders panel content for each tab
   const factory = useCallback(
@@ -422,10 +458,10 @@ export function DockLayout({ repeatPreviewModel }: DockLayoutProps) {
   // On model change: persist + sync to Zustand
   const onModelChange = useCallback(
     (_model: Model) => {
-      saveDockLayout(_model.toJson());
+      saveLayoutModel(_model);
       syncLayoutStateToStore(_model, dispatch);
     },
-    [dispatch]
+    [dispatch, saveLayoutModel]
   );
 
   // Expose handle. We use a ref to always point to the latest model via closure,
@@ -446,7 +482,7 @@ export function DockLayout({ repeatPreviewModel }: DockLayoutProps) {
       const m = modelRef.current;
       const existing = m.getNodeById(panelId);
       if (existing) {
-        m.doAction(Actions.deleteTab(panelId));
+        m.doAction(existing.getParent()?.getType() === "border" ? Actions.selectTab(panelId) : Actions.deleteTab(panelId));
       } else {
         const home = PANEL_HOMES[panelId];
         const nameMap: Record<string, string> = {
@@ -489,7 +525,7 @@ export function DockLayout({ repeatPreviewModel }: DockLayoutProps) {
           }
         }
       }
-      saveDockLayout(m.toJson());
+      saveLayoutModel(m);
       syncLayoutStateToStore(m, dispatchRef.current);
     },
     applyPreset(preset: keyof typeof LAYOUT_PRESETS) {
@@ -499,14 +535,14 @@ export function DockLayout({ repeatPreviewModel }: DockLayoutProps) {
     applyLayoutJson(json: IJsonModel) {
       const sanitized = sanitizeLayout(json);
       const newModel = Model.fromJson(sanitized);
-      saveDockLayout(sanitized);
+      if (modelRef.current !== compactModelRef.current) saveDockLayout(sanitized);
       syncLayoutStateToStore(newModel, dispatchRef.current);
       setModelRef.current(newModel);
     },
     resetLayout() {
       this.applyPreset("default");
     },
-  }), []); // stable — uses refs internally
+  }), [saveLayoutModel]); // stable — uses refs internally
 
   useEffect(() => {
     activeDockHandle = handle;
@@ -549,15 +585,15 @@ export function DockLayout({ repeatPreviewModel }: DockLayoutProps) {
           }
         }
       }
-      saveDockLayout(m.toJson());
+      saveLayoutModel(m);
       syncLayoutStateToStore(m, dispatchRef.current);
     } else if (figureCount <= 1 && figTabExists) {
       // Single-figure — auto-close, including startup with a persisted/open figures tab
       m.doAction(Actions.deleteTab(PANEL_IDS.figureNavigator));
-      saveDockLayout(m.toJson());
+      saveLayoutModel(m);
       syncLayoutStateToStore(m, dispatchRef.current);
     }
-  }, [figureCount]);
+  }, [figureCount, saveLayoutModel]);
 
   return (
     <Layout

@@ -1,5 +1,6 @@
 import { applyEditAction, PROPERTY_WRITE_CLEANUP_NOOP_REASON } from "tikz-editor/edit/actions";
 import type { EditActionResult } from "tikz-editor/edit/actions";
+import { IMPLICIT_FIGURE_ID } from "tikz-editor/parser/implicit-figure";
 import type {
   DocumentSession,
   EditorAction,
@@ -63,6 +64,7 @@ function initialUiState(): WorkspaceEphemeralState {
     bucketFillColor: DEFAULT_BUCKET_FILL_COLOR,
     selectedAddShape: DEFAULT_ADD_SHAPE_PRESET,
     selectedAddMatrixRows: DEFAULT_ADD_MATRIX_ROWS,
+    selectedAddMatrixStyle: "default",
     selectedAddMatrixColumns: DEFAULT_ADD_MATRIX_COLUMNS,
     creationStrokeColor: DEFAULT_CREATION_STROKE_COLOR,
     creationFillColor: DEFAULT_CREATION_FILL_COLOR,
@@ -322,7 +324,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
   switch (action.type) {
     case "LOAD_PROJECT": {
-      const projectDocument = createDocumentSession({ source: action.source, title: action.title });
+      const projectDocument = createDocumentSession({ source: action.source, title: action.title, activeFigureId: IMPLICIT_FIGURE_ID });
       workspace = {
         ...workspace,
         documents: { [projectDocument.id]: projectDocument },
@@ -558,12 +560,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           nextActiveFigureId = action.snapshot.figures[0].id;
           hasInitializedFigureSelection = true;
         }
+        const emptyFigure = isCurrentPendingRequest && action.snapshot.source === doc.source && action.snapshot.parseResult?.figure.body.length === 0;
         return {
           ...doc,
           snapshot: action.snapshot,
           texTextError: null,
           activeFigureId: nextActiveFigureId,
           hasInitializedFigureSelection,
+          selectedElementIds: emptyFigure && doc.selectedElementIds.size > 0 ? new Set<string>() : doc.selectedElementIds,
+          focusedScopeId: emptyFigure ? null : doc.focusedScopeId,
           pendingRequestId: isCurrentPendingRequest ? null : doc.pendingRequestId,
           activeHandleId:
             doc.activeHandleId && action.snapshot.editHandles.some((handle) => handle.id === doc.activeHandleId)
@@ -1180,12 +1185,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "SET_ADD_MATRIX_PRESET": {
       const rows = Math.max(1, Math.floor(action.rows));
       const columns = Math.max(1, Math.floor(action.columns));
-      if (ui.selectedAddMatrixRows === rows && ui.selectedAddMatrixColumns === columns) {
+      const style = action.style ?? ui.selectedAddMatrixStyle;
+      if (ui.selectedAddMatrixRows === rows && ui.selectedAddMatrixColumns === columns && ui.selectedAddMatrixStyle === style) {
         return state;
       }
       ui = {
         ...ui,
         selectedAddMatrixRows: rows,
+        selectedAddMatrixStyle: style,
         selectedAddMatrixColumns: columns
       };
       break;

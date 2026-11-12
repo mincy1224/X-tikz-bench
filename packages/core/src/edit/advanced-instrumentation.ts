@@ -5,6 +5,7 @@ import { applyEditAction } from "./actions.js";
 import type { Statement } from "../ast/types.js";
 import { extractTexEnvironment } from "../tex/environment.js";
 import { parseNodePartSource } from "../semantic/nodes/multipart.js";
+import { IMPLICIT_FIGURE_ID } from "../parser/implicit-figure.js";
 
 export type CompiledObjectBinding = { id: string; key: string; pointCount: number };
 export type EditableCompilation = { source: string; sourceVersion: string; bindings: CompiledObjectBinding[] };
@@ -131,7 +132,7 @@ export function instrumentAdvancedDocument(source: string, activeFigureId?: stri
   if (pictureEnd >= 0) {
     const pointMarker = options.comparison ? compareMarker : marker;
     const calibration = pointMarker("world", "basis0", "(0pt,0pt)") + pointMarker("world", "basisx", "(1pt,0pt)") + pointMarker("world", "basisy", "(0pt,1pt)");
-    changes.push({ from: pictureEnd, to: pictureEnd, text: options.comparison ? `\\begin{scope}[reset cm]\n${calibration}\n\\end{scope}` : calibration });
+    changes.push({ from: pictureEnd, to: pictureEnd, text: options.comparison ? `\n\\begin{scope}[reset cm]\n${calibration}\n\\end{scope}\n` : `\n${calibration}\n` });
   }
   let instrumented = source;
   if (activeFigure && (parsed.figures.length > 1 || options.comparison)) {
@@ -145,7 +146,8 @@ export function instrumentAdvancedDocument(source: string, activeFigureId?: stri
     const environment = extractTexEnvironment(source);
     const context = parsed.figure.body.filter((statement) => statement.span.from >= environment.prefixEnd && statement.span.to <= activeFigure.span.from)
       .map((statement) => source.slice(statement.span.from, statement.span.to)).join("\n");
-    const prefix = source.slice(0, environment.prefixEnd) + comparisonDefinition;
+    if (activeFigure.id === IMPLICIT_FIGURE_ID) instrumented = `\\begin{tikzpicture}\n${instrumented}\n\\end{tikzpicture}`;
+    const prefix = (activeFigure.id === IMPLICIT_FIGURE_ID ? "" : source.slice(0, environment.prefixEnd)) + comparisonDefinition;
     instrumented = environment.completeDocument
       ? `${prefix}\\begin{document}\n${context}\n${instrumented}\n\\end{document}`
       : `${prefix}\n${context}\n${instrumented}`;

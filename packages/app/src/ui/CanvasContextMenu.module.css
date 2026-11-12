@@ -9,12 +9,13 @@
 
 .menu {
   min-width: 220px;
-  padding: 4px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
   background: var(--bg-pane);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 10px color-mix(in srgb, black 20%, transparent);
+  border-radius: 11px;
+  box-shadow: 0 12px 36px color-mix(in srgb, black 16%, transparent);
 }
 
 .submenu {
@@ -38,9 +39,9 @@
   grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 22px;
+  min-height: 29px;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text);
   font-family: inherit;

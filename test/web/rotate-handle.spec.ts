@@ -37,6 +37,10 @@ describe("rotate handle geometry", () => {
     expect(result.anchorSvg.y).toBeCloseTo(80, 6);
     expect(result.handleSvg.x).toBeCloseTo(100, 6);
     expect(result.handleSvg.y).toBeCloseTo(68, 6);
+    const clamped = resolveRotateHandlePosition(frame, 2, 24, sb(90, 75, 110, 130));
+    expect(clamped.handleSvg.x).toBe(100);
+    expect(clamped.handleSvg.y).toBe(75);
+    expect(clamped.anchorSvg).toEqual(result.anchorSvg);
   });
 });
 

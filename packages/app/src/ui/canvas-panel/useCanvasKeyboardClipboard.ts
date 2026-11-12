@@ -314,6 +314,11 @@ export function useCanvasKeyboardClipboard(args: UseCanvasKeyboardClipboardArgs)
       if (sceneElements.length === 0) {
         return;
       }
+      if (sceneElements.some((element) => element.kind === "Path" && element.projectPng?.locked && selectedElementIds.has(element.sourceRef.sourceId))) {
+        setWarning("请先解锁 PNG。");
+        event.preventDefault();
+        return;
+      }
 
       const delta = axis === "x" ? worldPoint(pt(direction * step), pt(0)) : worldPoint(pt(0), pt(direction * step));
       const snapped = { snappedDelta: delta, lines: [] as SnapLine[], offset: worldPoint(pt(0), pt(0)) };

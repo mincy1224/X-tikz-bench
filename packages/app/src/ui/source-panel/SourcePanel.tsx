@@ -75,7 +75,7 @@ import {
 } from "../source-sync";
 import css from "./SourcePanel.module.css";
 import { formatTikzSource } from "tikz-editor/edit/source-format";
-import { PackagesToolbar } from "./PackagesPanel";
+import { SourceRenderToolbar } from "./SourceRenderToolbar";
 
 // ── Dynamic configuration compartments ──────────────────────────────────────
 
@@ -105,8 +105,19 @@ const darkHighlightStyle = HighlightStyle.define([
   { tag: t.name,           color: "#d4d4d4" },
 ]);
 
+const lightHighlightStyle = HighlightStyle.define([
+  { tag: t.keyword, color: "#6757a5" },
+  { tag: t.typeName, color: "#36726e" },
+  { tag: [t.lineComment, t.blockComment], color: "#8b9185", fontStyle: "italic" },
+  { tag: [t.string, t.special(t.string)], color: "#a05a42" },
+  { tag: t.regexp, color: "#8a5797" },
+  { tag: t.number, color: "#956039" },
+  { tag: [t.variableName, t.attributeName, t.propertyName], color: "#465b92" },
+  { tag: [t.operator, t.punctuation, t.bracket, t.name], color: "#59616c" }
+]);
+
 function buildHighlightExtension(dark: boolean) {
-  return dark ? [Prec.highest(syntaxHighlighting(darkHighlightStyle))] : [];
+  return [Prec.highest(syntaxHighlighting(dark ? darkHighlightStyle : lightHighlightStyle))];
 }
 
 // ── CodeMirror state effects ────────────────────────────────────────────────
@@ -1343,7 +1354,7 @@ export function SourcePanel() {
 
   return (
     <div className={css.panel}>
-      <PackagesToolbar />
+      <SourceRenderToolbar />
       <div className={[css.editorWrap, editorLineNumbers ? "" : css.hideLineNumbers].filter(Boolean).join(" ")} ref={editorRef} />
 
       {diagnostics.length > 0 && (

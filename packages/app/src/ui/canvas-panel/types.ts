@@ -176,6 +176,7 @@ export type DragState =
           }
         | null;
       measurementMode: "center" | "opposite-corner";
+      snapContext: SnapContext | null;
       preserveAspectDuringResize: boolean;
       historyMergeKey: string;
     }

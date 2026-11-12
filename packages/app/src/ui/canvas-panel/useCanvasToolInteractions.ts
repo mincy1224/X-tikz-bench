@@ -4,6 +4,7 @@ import { buildSnapContext, resolveSnapSettings, snapToolPointer, type SnapGuideI
 import type { NodeAnchorTarget } from "tikz-editor/semantic/types";
 import type { ClientPoint, WorldBounds, WorldPoint } from "../coords/types";
 import type { CanvasTransform, ToolMode } from "../../store/types";
+import { useEditorStore } from "../../store/store";
 import { resolveEndpointAnchorSnap } from "./endpoint-anchor-snap";
 import { clientToWorldPoint, distanceSquared } from "./geometry";
 import { createPathToolDraft, pathToolCloseRadiusWorld, pathToolCurrentPoint, pathToolShouldClose } from "./path-tool";
@@ -556,7 +557,8 @@ export function useCanvasToolInteractions(args: UseCanvasToolInteractionsArgs) {
                   kind: "matrix",
                   rows: selectedAddMatrixRows,
                   columns: selectedAddMatrixColumns,
-                  matrixKind: "nodes"
+                  matrixKind: "nodes",
+                  preset: useEditorStore.getState().selectedAddMatrixStyle
                 }
               : { kind: "node", strokeColor: creationStrokeColor },
             at: nodeAt

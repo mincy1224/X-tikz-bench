@@ -74,4 +74,12 @@ describe("settings storage", () => {
     const loaded = loadSettings();
     expect(loaded.editor.formatterMaxLineLength).toBe(240);
   });
+
+  it.each(["mathjax-asana", "unavailable-font", "mathjax-stix2"])("loads the bundled fallback for a legacy font preference: %s", (font) => {
+    setActiveEditorPlatform(createBrowserPlatformAdapter({ storage: {
+      getItem: () => JSON.stringify({ settings: { rendering: { mathJaxFont: font } } }),
+      setItem: () => {}
+    } }));
+    expect(loadSettings().rendering.mathJaxFont).toBe(font === "mathjax-stix2" ? font : "mathjax-newcm");
+  });
 });

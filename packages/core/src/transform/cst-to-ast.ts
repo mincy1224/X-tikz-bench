@@ -19,6 +19,7 @@ import {
   macroDefinitionStatementId
 } from "../ast/ids.js";
 import { mapBodyStatements, mapStatementNode, unwrapStatementLikeNode } from "../domains/statements/parse.js";
+import { IMPLICIT_FIGURE_ID } from "../parser/implicit-figure.js";
 import { parseOptionListRaw } from "../options/parse.js";
 import { findFirstChildByName, findFirstNodeByName, forEachChild, walk } from "../syntax/cursor.js";
 import { parseSyntax } from "@tikz-editor/lezer-tikz";
@@ -54,6 +55,18 @@ export function fromCst(tree: Tree, source: string, opts: CstToAstOptions = {}):
 
   const figureEntries = collectFigureNodes(tree, source, opts.scannedFigures);
   const activeFigureEntry = resolveActiveFigureEntry(figureEntries, opts.activeFigureId);
+  if (figureEntries.length === 0 && opts.activeFigureId === IMPLICIT_FIGURE_ID) {
+    const span = { from: 0, to: source.length };
+    const body = mapBodyStatements(tree.topNode, source, { nextStatementIndex: 0 });
+    collectStructuralDiagnostics(tree.topNode, source, diagnostics);
+    return {
+      figure: { kind: "Figure", span, body },
+      figures: [{ id: IMPLICIT_FIGURE_ID, span, beginSpan: { from: 0, to: 0 },
+        endSpan: { from: source.length, to: source.length }, startLine: 1, endLine: source.split("\n").length }],
+      activeFigureId: IMPLICIT_FIGURE_ID,
+      diagnostics
+    };
+  }
   if (figureEntries.length === 0) {
     const inlineNode = findFirstNodeByName(tree.topNode, "TikzInline");
     if (inlineNode) {

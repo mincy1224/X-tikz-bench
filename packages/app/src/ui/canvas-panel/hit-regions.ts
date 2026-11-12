@@ -105,7 +105,7 @@ export function buildHitRegions(
     const sourceId = element.sourceRef.sourceId;
     const clipChain = encodeClipChain(element.clipChain ?? [], viewBox);
     if (element.kind === "Path") {
-      const pointerMode = resolveShapePointerMode(element.style.fill, element.style.stroke, element.style.fillOpacity, element.style.strokeOpacity, element.style.opacity);
+      const pointerMode = element.projectPng || element.matrixCell ? "fill" : resolveShapePointerMode(element.style.fill, element.style.stroke, element.style.fillOpacity, element.style.strokeOpacity, element.style.opacity);
       if (!pointerMode) continue;
       const d = encodePathData(element.commands, viewBox);
       if (!d) continue;

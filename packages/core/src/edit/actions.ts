@@ -5,6 +5,7 @@ import type {
 import type { WorldPoint, WorldBounds } from "../coords/points.js";
 import type { NodeItem, PathItem, PathStatement, Statement, Span } from "../ast/types.js";
 import type { SourcePatch } from "./types.js";
+import type { EvaluateTikzResult } from "../semantic/evaluate.js";
 import { applyEditIntent } from "./apply.js";
 import { replaceSpan } from "./patch.js";
 import { PT_PER_CM, type DragFormatPrecision } from "./format.js";
@@ -102,7 +103,10 @@ export type ResizeRole =
   | "right";
 
 export type StyleLevel = "command" | "scope" | "named-style" | "preamble";
-export type { ElementTemplate } from "./element-templates.js";
+export type { ElementTemplate, MatrixInsertPreset } from "./element-templates.js";
+export { parseProjectPng, projectPngText, PNG_LOCK_MARKER } from "./project-png.js";
+import { IMPLICIT_FIGURE_ID } from "../parser/implicit-figure.js";
+export { readSimpleRectangle, rewriteSimpleRectangle } from "./simple-rectangle.js";
 export type ReorderDirection = "sendToBack" | "sendBackward" | "bringForward" | "bringToFront";
 export { ADORNMENT_EDIT_NOOP_REASON } from "./actions/adornment-set-property.js";
 export { PATH_ATTACHED_NODE_EDIT_NOOP_REASON } from "./actions/path-attached-node-actions.js";
@@ -216,6 +220,7 @@ const GENERATED_NODE_NAME_RE = /(?:^|[^A-Za-z0-9_-])(node\d+)(?![A-Za-z0-9_-])/g
 export type EditActionApplyOptions = {
   evaluateOptions?: EvaluateOptions;
   parseOptions?: EditParseOptions;
+  semanticSnapshot?: { source: string; semantic: EvaluateTikzResult };
 };
 
 export function preflightPositionNodeRelativeToAction(
@@ -227,7 +232,8 @@ export function preflightPositionNodeRelativeToAction(
     source,
     action,
     options.evaluateOptions,
-    options.parseOptions ?? {}
+    options.parseOptions ?? {},
+    options.semanticSnapshot?.source === source ? options.semanticSnapshot.semantic : undefined
   );
   return {
     ...preflight,
@@ -311,9 +317,9 @@ export function applyEditAction(
       case "addNodeAdornment":
         return applyAddNodeAdornmentAction(source, action, parseOptions);
       case "positionNodeRelativeTo":
-        return applyPositionNodeRelativeToAction(source, action, evaluateOptions, parseOptions);
+        return applyPositionNodeRelativeToAction(source, action, evaluateOptions, parseOptions, options.semanticSnapshot?.source === source ? options.semanticSnapshot.semantic : undefined);
       case "convertNodePositionToAbsolute":
-        return applyConvertNodePositionToAbsoluteAction(source, action, evaluateOptions, parseOptions);
+        return applyConvertNodePositionToAbsoluteAction(source, action, evaluateOptions, parseOptions, options.semanticSnapshot?.source === source ? options.semanticSnapshot.semantic : undefined);
       case "reorderElements":
         return applyReorderElementsAction(source, action.elementIds, action.direction, parseOptions);
       case "groupElements":
@@ -1106,10 +1112,16 @@ function applyAddElement(
 ): EditActionResult {
   const beforeStatements = parseStatementSnapshot(source, parseOptions);
   const resolved = resolveElementTemplateAnchorNames(source, template, parseOptions);
-  const snippet = generateElementSource(resolved.template, at);
+  let insertion = resolved.template;
+  if (insertion.kind === "matrix" && (insertion.preset === "grid-empty" || insertion.preset === "grid-text")) {
+    let number = 1;
+    while (source.includes(`tb-array-${number}`)) number++;
+    insertion = { ...insertion, name: `tb-array-${number}` };
+  }
+  const snippet = generateElementSource(insertion, at);
   const parsedForInsertion = parseTikzForEdit(resolved.source, parseOptions);
 
-  const newSource = insertElementIntoSource(resolved.source, snippet, parsedForInsertion.figure.span);
+  const newSource = insertElementIntoSource(resolved.source, snippet, parsedForInsertion.figure.span, parsedForInsertion.activeFigureId === IMPLICIT_FIGURE_ID);
 
   const afterStatements = parseStatementSnapshot(newSource, parseOptions);
   const insertedStatementId = afterStatements.all.find((ref) => !beforeStatements.byId.has(ref.id))?.id;

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -71,8 +71,8 @@ function run(command: string, args: readonly string[], cwd: string, timeoutMs: n
   });
 }
 
-export function assertSafeSvg(svg: string): void {
-  if (Buffer.byteLength(svg, "utf8") > MAX_SVG_BYTES) throw new Error("Generated SVG exceeds the safety limit.");
+export function assertSafeSvg(svg: string, maxBytes = MAX_SVG_BYTES): void {
+  if (Buffer.byteLength(svg, "utf8") > maxBytes) throw new Error("Generated SVG exceeds the safety limit.");
   if (!/^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg\b/i.test(svg)) throw new Error("dvisvgm returned invalid SVG.");
   if (/<!DOCTYPE\b|<!ENTITY\b|<script\b|<foreignObject\b|<iframe\b|<object\b|<embed\b|<style[^>]*>[^<]*@import/iu.test(svg)) {
     throw new Error("Generated SVG contains blocked active content.");
@@ -92,11 +92,21 @@ export function assertSafeSvg(svg: string): void {
   }
 }
 
-export async function compileLatex(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto"): Promise<CompileResult> {
+async function stagePngs(directory: string, pngs?: ReadonlyMap<string, Buffer>): Promise<void> {
+  if (!pngs?.size) return;
+  await mkdir(path.join(directory, "assets"));
+  for (const [name, data] of pngs) {
+    if (!/^assets\/[0-9a-f]{64}\.(?:png|pdf)$/u.test(name)) throw new Error("Invalid project asset path.");
+    await writeFile(path.join(directory, name), data);
+  }
+}
+
+export async function compileLatex(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>): Promise<CompileResult> {
   const deadline = Date.now() + config.timeoutMs;
   const profile = resolveCompileProfile(source, requestedProfile);
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-"));
   try {
+    await stagePngs(directory, pngs);
     await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile), "utf8");
     const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true);
     const logPath = path.join(directory, "input.log");
@@ -110,10 +120,14 @@ export async function compileLatex(source: string, config: ServerConfig, request
     const input = profile === "xelatex" ? "input.xdv" : "input.dvi";
     const dviPath = path.join(directory, input);
     await stat(dviPath);
-    const svg = await run(config.dvisvgmBin, ["--page=1", "--bbox=min", "--exact", "--no-fonts", "-o", "output.svg", input], directory, Math.max(1, deadline - Date.now()), true);
+    const svg = await run(config.dvisvgmBin, ["--page=1", "--bbox=min", "--exact", "--no-fonts", "--embed-bitmaps", "-o", "output.svg", input], directory, Math.max(1, deadline - Date.now()), true);
     if (svg.code !== 0) throw new Error(svg.output || "dvisvgm conversion failed.");
-    const output = await readFile(path.join(directory, "output.svg"), "utf8");
-    assertSafeSvg(output);
+    const svgPath = path.join(directory, "output.svg");
+    const bitmapBytes = [...(pngs?.values() ?? [])].reduce((sum, data) => sum + data.length, 0);
+    const maxSvgBytes = MAX_SVG_BYTES + Math.ceil(bitmapBytes * 1.4);
+    if ((await stat(svgPath)).size > maxSvgBytes) throw new Error("Generated SVG exceeds the safety limit.");
+    const output = await readFile(svgPath, "utf8");
+    assertSafeSvg(output, maxSvgBytes);
     return { svg: output, log, diagnostics, markers: extractObjectMarkers(output) };
   } finally {
     await rm(directory, { recursive: true, force: true }).catch(() => {});
@@ -122,12 +136,17 @@ export async function compileLatex(source: string, config: ServerConfig, request
 
 export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto"): string {
   const environment = extractTexEnvironment(source);
-  const inferred = inferredMathPackages(source, environment).map((name) => `\\usepackage{${name}}`).join("\n");
-  if (environment.completeDocument) return inferred ? source.slice(0, environment.insertionOffset) + inferred + "\n" + source.slice(environment.insertionOffset) : source;
+  const mathPackages = ["amsmath", "amssymb", "mathtools", ...inferredMathPackages(source, environment)];
+  if (/\\includegraphics\b/u.test(source)) mathPackages.push("graphicx");
+  if (environment.completeDocument) {
+    const explicit = new Set(environment.packages.map((item) => item.name));
+    const missing = mathPackages.filter((name) => !explicit.has(name)).map((name) => `\\usepackage{${name}}`).join("\n");
+    return missing ? source.slice(0, environment.insertionOffset) + missing + "\n" + source.slice(environment.insertionOffset) : source;
+  }
   const profile = resolveCompileProfile(source, requestedProfile);
   const explicit = new Set(environment.packages.map((item) => item.name));
-  const defaults: { name: string; options?: string }[] = [{ name: "tikz" }, ...inferredMathPackages(source, environment).map((name) => ({ name }))];
-  if (profile === "xelatex") defaults.push({ name: "ctex", options: "fontset=fandol" });
+  const defaults: { name: string; options?: string }[] = [{ name: "tikz" }, ...mathPackages.map((name) => ({ name }))];
+  if (profile === "xelatex" && /[\u3400-\u9fff]/u.test(source)) defaults.push({ name: "ctex", options: "fontset=fandol" });
   if (/\\begin\{forest\}/u.test(source)) defaults.push({ name: "forest" });
   const plots = /\\begin\{(?:axis|groupplot|semilogxaxis|semilogyaxis|loglogaxis)\}/u.test(source);
   if (plots) defaults.push({ name: "pgfplots" });
@@ -138,11 +157,12 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
   return `\\documentclass[border=2pt]{standalone}\n${preamble}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${plotSetup}\n\\begin{document}\n${content}\n\\end{document}\n`;
 }
 
-export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto"): Promise<PdfCompileResult> {
+export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>): Promise<PdfCompileResult> {
   const deadline = Date.now() + config.timeoutMs;
   const profile = resolveCompileProfile(source, requestedProfile);
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-pdf-"));
   try {
+    await stagePngs(directory, pngs);
     await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile), "utf8");
     const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true);
     const fullLog = await readFile(path.join(directory, "input.log"), "utf8").catch(() => latex.output);

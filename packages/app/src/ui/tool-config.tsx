@@ -180,7 +180,7 @@ export const TOOL_BUTTONS: readonly ToolButtonDef[] = [
   { mode: "addLine",    label: "Line",     title: "Line (L)",     shortcut: "l", icon: LineIcon,     separatorBefore: true },
   { mode: "addArrow",   label: "Arrow",    title: "Arrow (A)",    shortcut: "a", icon: ArrowIcon },
   { mode: "addBezier",  label: "Bezier",   title: "Bezier (B)",   shortcut: "b", icon: BezierIcon },
-  { mode: "addPath",    label: "Path",     title: "Path (P)",     shortcut: "p", icon: PathIcon },
+  { mode: "addPath",    label: "Polyline", title: "Polyline (P)", shortcut: "p", icon: PathIcon },
   { mode: "addFreehand", label: "Freehand", title: "Freehand (F)", shortcut: "f", icon: FreehandIcon },
   { mode: "addGrid",    label: "Grid",     title: "Grid",                        icon: GridIcon,     separatorBefore: true },
   { mode: "addRect",    label: "Rect",     title: "Rectangle (R)", shortcut: "r", icon: RectIcon },

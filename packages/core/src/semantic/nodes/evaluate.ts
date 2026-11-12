@@ -4,6 +4,7 @@ import { worldPoint } from "../../coords/points.js";
 import { worldTransform } from "../../coords/transforms.js";
 import { DEFAULT_MACRO_EXPANSION_MAX_DEPTH, expandMacroBindings } from "../../macros/index.js";
 import type { OptionEntry, OptionListAst } from "../../options/types.js";
+import { isProjectPngLocked, parseProjectPng } from "../../edit/project-png.js";
 import {
   readNamedNodeGeometry,
   resolveContextColorAliasValue,
@@ -479,7 +480,8 @@ export function evaluateNodeItem(
     maxDepth: DEFAULT_MACRO_EXPANSION_MAX_DEPTH,
     trace: context.macroTraceCollector ?? undefined
   });
-  const resolvedNodeText = normalizeEscapedTextSpaces(resolveTextColorAliases(expandedNodeText, context, statement.id));
+  const projectPng = parseProjectPng(expandedNodeText);
+  const resolvedNodeText = projectPng ? "" : normalizeEscapedTextSpaces(resolveTextColorAliases(expandedNodeText, context, statement.id));
   const rawNodeParts = isMultipartShape(nodeShape)
     ? expandedNodeText === item.text
       ? parseNodePartSource(item.text, item.textSpan.from)
@@ -561,7 +563,17 @@ export function evaluateNodeItem(
     context.textEngine,
     placementOptions.textMode ?? "text"
   );
-  const adjustedNodeLayout = adjustNodeLayoutForShape(baseNodeLayout, nodeShape);
+  const adjustedNodeLayout = projectPng ? {
+    ...baseNodeLayout,
+    visualWidth: projectPng.width,
+    visualHeight: projectPng.height,
+    naturalWidth: projectPng.width,
+    naturalHeight: projectPng.height,
+    anchorHalfWidth: projectPng.width / 2 + baseNodeLayout.outerXSep,
+    anchorHalfHeight: projectPng.height / 2 + baseNodeLayout.outerYSep,
+    baseLineY: projectPng.height / 2,
+    midLineY: projectPng.height / 2 + baseNodeLayout.midLineY - baseNodeLayout.baseLineY
+  } : adjustNodeLayoutForShape(baseNodeLayout, nodeShape);
   const shapeGeometry = resolveNodeShapeGeometryParams(expandedNodeOptions, () => context.mathRandom.nextRaw());
   const twoPartShapeSizing = resolveTwoPartShapeSizing({
     nodeShape,
@@ -769,7 +781,13 @@ export function evaluateNodeItem(
       explicitPaintMode.fill ||
       ((style.fill == null || style.fill === "none") && nodeStyle.fill != null && nodeStyle.fill !== "none")
   };
-  if (resolvedPaintMode.draw || resolvedPaintMode.fill || nodeStyle.shadowLayers.length > 0) {
+  if (projectPng) {
+    pushNodeElement({
+      ...makeNodeBoxElement(nodeSourceId, item.id, center, projectPng.width, projectPng.height, { ...nodeStyle, stroke: null, fill: null, roundedCorners: 0 }, item.span),
+      projectPng: { key: projectPng.key, locked: isProjectPngLocked(item.options) || isProjectPngLocked(statement.options) }
+    });
+    markFeature("project_png", "supported");
+  } else if (resolvedPaintMode.draw || resolvedPaintMode.fill || nodeStyle.shadowLayers.length > 0) {
     const nodeBoxStyle = applyNodeBoxPaintMode(nodeStyle, resolvedPaintMode);
     const nodeDividerStyle: ResolvedStyle = {
       ...nodeBoxStyle,

@@ -54,11 +54,14 @@ export function buildSnapContext(input: BuildSnapContextInput): SnapContext {
     ? new Map([...input.referenceBounds].map(([sourceId, bounds]) => [sourceId, { ...bounds, sourceId }]))
     : collectSourceReferenceBounds(input.sceneElements);
   const referenceBounds: SnapBounds[] = [];
+  const cellParents = new Map(input.sceneElements.flatMap((element) => element.matrixCell ? [[element.matrixCell.cellSourceId, element.matrixCell.matrixSourceId] as const] : []));
 
   for (const bounds of sourceBounds.values()) {
     if (selectedSet.has(bounds.sourceId)) {
       continue;
     }
+    const matrix = cellParents.get(bounds.sourceId);
+    if (matrix && sourceBounds.has(matrix) && !input.includeMatrixCells) continue;
 
     if (viewportFilter && !boundsIntersect(bounds, viewportFilter)) {
       continue;

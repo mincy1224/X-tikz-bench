@@ -69,13 +69,15 @@ curl http://127.0.0.1:5173/api/latex/status
 
 ```text
 TIKZ_LATEX_BIN=latex
+TIKZ_XELATEX_BIN=xelatex
 TIKZ_DVISVGM_BIN=dvisvgm
+TIKZ_DVIPDFMX_BIN=dvipdfmx
 TIKZ_LATEX_TIMEOUT_MS=20000
 TIKZ_LATEX_MAX_SOURCE_BYTES=1048576
 TIKZ_LATEX_MAX_CONCURRENCY=2
 ```
 
-服务端不使用 shell，只接受固定的 `latex` 引擎和固定参数；强制 `-no-shell-escape`，并设置 TeX 的受限文件读写策略。每个请求使用独立临时目录，成功或失败都会清理。生成的 SVG 还会拒绝脚本、事件处理器、外部 URL、XML 实体和 `foreignObject`。
+校样和项目 SVG/PDF 导出使用 XeLaTeX。服务端直接调用已配置的引擎和转换器，强制 `-no-shell-escape`，并设置 TeX 的受限文件读写策略。每个请求使用独立临时目录，仅放入编译所需的项目 PNG。dvisvgm 使用 `--embed-bitmaps` 生成独立 SVG；结果拒绝脚本、事件处理器、外部 URL、XML 实体和 `foreignObject`。
 
 这是面向本机单用户的服务。若要暴露到局域网或公网，还应增加身份认证、HTTPS、反向代理限流，并用 systemd/Docker 设置进程内存上限。
 

@@ -30,16 +30,7 @@ export type CanvasSettings = {
 
 export type MathJaxFont =
   | "mathjax-newcm"
-  | "mathjax-asana"
-  | "mathjax-bonum"
-  | "mathjax-dejavu"
-  | "mathjax-fira"
-  | "mathjax-modern"
-  | "mathjax-pagella"
-  | "mathjax-schola"
-  | "mathjax-stix2"
-  | "mathjax-termes"
-  | "mathjax-tex";
+  | "mathjax-stix2";
 
 export type RenderingSettings = {
   mathJaxFont: MathJaxFont;
@@ -71,7 +62,7 @@ export const EDITOR_FONT_SIZE_OPTIONS = Array.from(
 
 export const DEFAULT_SETTINGS: AppSettings = {
   general: {
-    uiFontSizePx: 11,
+    uiFontSizePx: 12,
     colorScheme: "system",
     language: "system",
     canvasInvert: false

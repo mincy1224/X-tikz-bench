@@ -41,4 +41,30 @@ export const COMPONENT_TEMPLATES = [
 \addplot+[boxplot prepared={lower whisker=1,lower quartile=2,median=3,upper quartile=4,upper whisker=6}] coordinates {};
 \end{axis}
 \end{tikzpicture}` },
+  { name: "折线", category: "线条与路径", mode: "可视编辑", source: String.raw`\begin{tikzpicture}
+\draw[line width=1.1pt,blue!75!black] (0,0) -- (1.1,0.7) -- (2.2,0.3) -- (3.3,1.4) -- (4.4,0.9);
+\end{tikzpicture}` },
+  { name: "正交折线", category: "线条与路径", mode: "可视编辑", source: String.raw`\begin{tikzpicture}
+\draw[line width=1.1pt,rounded corners=2pt] (0,0) -- (1.4,0) -- (1.4,1.1) -- (3.1,1.1) -- (3.1,0.4) -- (4.2,0.4);
+\end{tikzpicture}` },
+  { name: "折线箭头", category: "线条与路径", mode: "可视编辑", source: String.raw`\begin{tikzpicture}
+\draw[-{Stealth[length=8pt,width=5pt]},line width=1.1pt] (0,0) -- (1.2,0.8) -- (2.3,0.3) -- (3.6,1.3);
+\end{tikzpicture}` },
+  { name: "多边形", category: "线条与路径", mode: "可视编辑", source: String.raw`\begin{tikzpicture}
+\draw[fill=blue!10,line width=1pt] (0,0) -- (1.5,0.5) -- (2.2,1.8) -- (0.8,2.1) -- (-0.4,1.2) -- cycle;
+\end{tikzpicture}` },
+  { name: "贝塞尔曲线", category: "线条与路径", mode: "可视编辑", source: String.raw`\begin{tikzpicture}
+\draw[line width=1.1pt,blue!75!black] (0,0) .. controls (1,1.8) and (2,-0.8) .. (3.2,1);
+\end{tikzpicture}` },
+  { name: "坐标轴", category: "数学图形", mode: "可视编辑", source: String.raw`\begin{tikzpicture}
+\draw[-{Stealth[length=7pt]}] (-0.3,0) -- (4,0) node[right] {$x$};
+\draw[-{Stealth[length=7pt]}] (0,-0.3) -- (0,2.8) node[above] {$y$};
+\draw (1,0.08) -- (1,-0.08) node[below] {$1$};
+\draw (0.08,1) -- (-0.08,1) node[left] {$1$};
+\end{tikzpicture}` },
+  { name: "数学标注", category: "数学图形", mode: "可视编辑", source: String.raw`\begin{tikzpicture}
+\node[draw,rounded corners,inner sep=6pt] (a) at (0,0) {$\llbracket x \rrbracket$};
+\node[draw,rounded corners,inner sep=6pt] (b) at (3,0) {$\llbracket f(x) \rrbracket$};
+\draw[-{Stealth[length=8pt]}] (a.east) -- (b.west);
+\end{tikzpicture}` },
 ] as const;

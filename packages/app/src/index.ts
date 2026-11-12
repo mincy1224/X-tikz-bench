@@ -54,3 +54,4 @@ export type {
 } from "./platform/types.js";
 export type { DocumentFileRef, ExternalChangeStatus, FileRevision } from "./store/types.js";
 export type { LinkedTextReadResult, LinkedTextWriteResult } from "./linked-file-sync.js";
+export type { ProjectAsset } from "./ui/ProjectAssetPanel";

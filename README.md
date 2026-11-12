@@ -1,94 +1,76 @@
-# TikZ Bench
+# X TikZ Bench
 
-[中文说明](README.zh-CN.md)
+一个本地运行的 TikZ 绘图工作台。画布和源码区编辑同一份 TikZ 正文，项目自动保存源码修订及素材。支持导入 TeX 源码或 LaTeX 工程 ZIP，以及导出可独立编译的工程 ZIP。
 
-A local, self-hosted visual workspace for TikZ. Edit supported diagrams on a canvas or in the source editor, with TikZ source as the saved document.
+## 使用
 
-TikZ Bench is an independently maintained derivative of [TikZ Editor](https://github.com/DominikPeters/tikz-editor) by **Dominik Peters**. It retains the original parsing and rendering foundations, with additional local project management, formatting controls and system installation support.
+从空白画布或首页组件开始。首页提供折线、正交折线、折线箭头、多边形、贝塞尔曲线、坐标轴、数学标注，以及矩阵、流程图、函数图等示例。工具栏的**折线**工具快捷键是 `P`：依次点击添加折点，按 Enter 或双击结束；点击起点可闭合。Esc 取消当前手势，Ctrl+Z 撤销。
 
-## Features
+快速画布用于即时交互。点击 **TeX 校样**查看真实 XeLaTeX 结果，校样内的下载直接使用已经显示的 SVG。**TeX 对照**可以用同一比例叠加快速画布和真实结果。SVG/PDF 导出也使用 XeLaTeX。
 
-- Shapes, paths, curves, text, groups and anchor connections; edge, center and equal-spacing guides while dragging.
-- Multipart rectangles with horizontal or vertical sections, individual content and fills.
-- Matrices: click to move the whole matrix, double-click to edit a cell; layout resizing and separate content scaling.
-- World-space movement for nested transformed groups and anchored matrices; arrow keys move 1pt (Shift: 10pt), independently of the grid.
-- A shape/text format panel, exact font sizes, colors, line widths, independently sized arrowheads and multi-selection editing.
-- A persistent format painter for matching component types; each gesture is one undo step.
-- Local projects with automatic saving; TeX, SVG, PNG and PDF export.
-- Same-origin MathJax formulas and local LaTeX / Chinese XeLaTeX compilation.
-- New Computer Modern and STIX2 math fonts are bundled for offline use.
-- A read-only fast-canvas / real-TeX overlay, with shared coordinates, opacity controls and per-object geometry, text, baseline and anchor differences.
-- `\llbracket` and `\rrbracket`, including scalable `\left…\right` forms. The source panel's **Packages** dialog edits document package declarations and checks whether packages are installed in the existing TeX Live.
-- Example matrices, flowcharts, plots and circuits. Advanced Forest, PGFPlots and Circuitikz code uses local TeX compilation; direct canvas editing depends on supported syntax.
+打开 **素材** 导入 PNG 或 PDF，拖到画布放置为可编辑的 TikZ 节点。单张素材上限为 10 MiB。PDF 预览需要 Poppler，工程保留原始矢量 PDF。**导出 LaTeX 工程** 会下载包含 `main.tex`、`figure.tikz` 和 `assets/` 的 ZIP，解压后可用 XeLaTeX 编译 `main.tex`。**矩阵**工具中可选数学矩阵、方格、行向量或列向量。双击进入单元格，Tab / Shift+Tab 换格，Esc 返回整体选择。
 
-## Install from source
+工作台不提供宏包管理界面。服务端编译时自动提供 TikZ 常用库和 `amsmath`、`amssymb`、`mathtools`；源码使用 `\llbracket` 或 `\rrbracket` 时自动加入 `stmaryrd`，同时保留用户已有的声明和自定义命令。画布中双括号可离线快速预览。复杂或暂不支持直接编辑的 TeX 语法仍可在源码中修改，并用 TeX 校样确认。
 
-**Target:** Ubuntu 24.04 with systemd, including WSL2 with systemd enabled. You need sudo access, network access for npm/apt, and an existing complete TeX Live installation. TeX Live 2026 is the intended target; the installer does not install or replace TeX.
+界面提供浅色和深色主题。宽窗口支持拖动调整三栏宽度；窄窗口优先展开画布，从两侧的 Source / Inspector 页签打开面板，恢复宽窗口后保留原来的布局。界面和源码字体均由项目提供，公式预览可选内置的 New Computer Modern 与 STIX2。
 
-After cloning **this repository**, run from its root:
+## 从源码一键安装（Linux / WSL2）
+
+`git clone` 后，在仓库根目录执行：
 
 ```bash
 bash install.sh
 ```
 
-No separate build or packaging step is needed. The script installs missing non-TeX tools through apt, runs `npm ci`, builds the frontend and server, checks compilation under service isolation, and installs the `tikz-bench` command and systemd service. Node.js 22.13+ and npm 10.5+ are required for building; an existing older Node.js must be updated first.
+安装器面向 Ubuntu / Debian 及相应的 WSL2 发行版。前置环境为已启用 systemd、Linux 版 Node.js 22.13+、npm 10.5+，以及已安装的完整 TeX Live 2026。Windows 用户请在 WSL2 终端运行。安装器会检查依赖并提示缺失项，不会安装或替换 TeX Live；Node.js / npm 版本过旧时会停止并提示升级。
 
-TeX must provide `latex`, `xelatex`, `dvisvgm`, `dvipdfmx` and `kpsewhich`, with TikZ, standalone, Forest, PGFPlots, Circuitikz, ctex, fontspec and Fandol fonts. Missing Chinese system fonts are installed through apt. To specify the existing TeX directory:
+脚本依次运行 `npm ci --include=dev`、`npm run build`、`npm run build:full`，从当前检出的源码生成部署文件，安装并启动 `tikz-bench` 系统服务。首次安装后访问 <http://localhost:5173/>；已有同名服务时会升级该服务并保留配置、项目数据库和备份。安装过程可能要求输入 sudo 密码。
+
+如果 TeX Live 未加入 Linux PATH，可指定实际的二进制目录：
 
 ```bash
 TIKZ_TEX_BIN_DIR=/usr/local/texlive/2026/bin/x86_64-linux bash install.sh
 ```
 
-A fresh installation starts automatically. Open **http://localhost:5173**. Existing installations retain configuration, project data and their previous service state. **Do not delete the old installation first.** Failed installation checks restore the previous program and configuration. Real Ubuntu/systemd/TeX Live 2026 acceptance is still pending.
+安装后可使用 `tikz-bench status`、`tikz-bench logs`、`tikz-bench restart` 管理服务。详细配置见 [服务端文档](apps/server/README.md)。在其他机器上通过 Git 安装当前改动前，需要先将这一版源码提交并推送到自己的仓库。
 
-## Use and upgrade
+## 手动从源码构建并运行（含原生 Windows）
 
-Create a project with a required unique name and optional description, then enter TikZ code or add shapes from the toolbar. Select objects to edit the shape/text format panel. Actual dimensions and center coordinates are separate from minimum-size and text-width constraints. Press Esc to cancel a drag; matrix cell editing returns to the whole matrix on Esc, then clears selection on another Esc. Projects save after committed edits. Supported Forest, PGFPlots and Circuitikz environments compile automatically on the main canvas; mapped objects expose source properties and supported data points can be dragged. Custom macro internals and groupplot mappings are not reverse editable. Real TeX mapping acceptance is pending; this is not a claim of arbitrary LaTeX editability.
-
-To use math packages, add declarations before the picture, for example `\usepackage{mathtools,stmaryrd}`. Open **Packages** above the source editor to add or remove packages, edit options, and check availability. The dialog edits the same TikZ source and one Apply is one undo step. Double brackets work in the fast canvas without a declaration; TeX preview and export add `stmaryrd` only when needed and only if you have not defined the commands yourself. Common `amsmath`, `amsfonts`, `amssymb`, `mathtools`, `cancel`, and `braket` commands use bundled MathJax. Unsupported text commands from known math packages use local TeX for their text region; packages or definitions that may change drawing semantics use whole-figure TeX. A failed text compile keeps the last successful drawing and exposes **Retry formula**. No package files are uploaded or installed by the app.
+需要 Node.js 22.13+、npm 10.5+ 和 SQLite。真实 TeX 校样及 SVG/PDF 导出需要 TeX Live 2026 提供 `latex`、`xelatex`、`dvisvgm`、`dvipdfmx`、`kpsewhich`，以及 TikZ、standalone、数学包和示例涉及的 PGFPlots、Circuitikz 等包。
 
 ```bash
-tikz-bench start
-tikz-bench status
-tikz-bench stop
-tikz-bench restart
-tikz-bench logs
-tikz-bench version
-tikz-bench backup ./projects-backup.sqlite
-tikz-bench upgrade /path/to/tikz-bench-source
-tikz-bench rollback
+npm ci
+npm run build:full
+node apps/server/dist/index.js --port 4173
 ```
 
-To upgrade, run `git pull --ff-only` in your source checkout, then `bash install.sh` again. Alternatively, `tikz-bench upgrade /path/to/tikz-bench-source` builds and installs that checkout. `rollback` switches programs without replacing the database; backup restores the original running/stopped state.
+然后打开 <http://127.0.0.1:4173/>。开发模式可运行 `npm run dev:full`。项目数据库默认为 `data/tikz-bench.sqlite`，可通过 `TIKZ_DATABASE_PATH` 设置。TeX 程序路径等设置见 [服务端配置](apps/server/README.md)。本目录是独立 Web 工作台，不涉及旧数据库迁移或 Tauri 桌面壳。
 
-This movement refactor keeps your current database and service configuration. After pushing the update to your repository, reinstall from source:
+## 验证
 
 ```bash
-cd ~/tikz-bench &&
-git pull --ff-only &&
-nvm use 22 &&
-bash install.sh &&
-tikz-bench start &&
-tikz-bench version &&
-tikz-bench status
+npm run typecheck
+npm run lint:prod
+npm test
+npm run build:full
 ```
 
-There is no database/schema change and no need to uninstall first. Check `curl -fsS http://127.0.0.1:5173/api/health` and `tikz-bench logs`. With your TeX tools on PATH, run `node --import tsx scripts/verify-editable-tex.mts` from the source checkout to validate the actual Forest/plot/circuit mappings and PDF export.
+浏览器测试可运行 `npm run test:e2e`；在已有 Chrome 的测试机上可设置 `PLAYWRIGHT_CHANNEL=chrome` 后运行 `node scripts/run-web-e2e.mjs chromium project-polyline.spec.ts tex-packages.spec.ts source-panel-layout.spec.ts`。真正的字体、基线和 PDF/SVG 对照必须在装有 TeX Live 的机器上检查。性能目标也应在目标机器的生产构建中测量，不能由单元测试代替。
 
-Run `node --import tsx scripts/verify-tex-text.mts` in the source checkout on the target Ubuntu system to verify actual double-bracket glyphs, local text dimensions, cache reuse, and a Chinese XeLaTeX PDF. Browser and unit checks do not replace that TeX Live 2026 check.
+Windows 开发环境可执行 `npm run verify:tuntex -- test/fixtures/minimal.tex`，通过配置好的 tunTeX 客户端验证真实 XeLaTeX PDF 和 XDV。临时模式只上传一个 TeX 文件；带 PNG 的样例需要独立、可清空的已注册远端项目，并通过 `TIKZ_TUNTEX_ASSET_PROJECT_KEY` 指定它。Web 工作台的生产编译仍使用服务端原生 XeLaTeX 和 dvisvgm。
 
-Programs: `/opt/tikz-bench/releases/`. Configuration: `/etc/default/tikz-bench`. Default database: `/var/lib/tikz-bench/tikz-bench.sqlite`. The service listens on `127.0.0.1:5173` by default.
+生产构建的对象规模验收与真实截图审查（PowerShell，从项目根目录运行）：
 
-Open **TeX 对照** above the source editor to compare the active picture's current draft with local TeX. Switch between overlay, fast canvas and TeX, adjust opacity, pan/zoom, and select a difference row to highlight or locate its object. Alignment uses three TeX world-coordinate markers, preserving physical scale rather than fitting the two bounding boxes. Measurements use pt and a configurable tolerance; missing mappings show “—”. The view never writes comparison markers to your source. If the draft changes while it is open, it keeps the captured snapshot and disables locating old objects. Geometry bounds include arrow paths but exclude stroke expansion; this is not a pixel-perfect diff. On the target system, run `node --import tsx scripts/verify-tex-comparison.mts` to check real TeX marker delivery, then visually check alignment in the browser. Real TeX Live 2026 validation remains pending on this development machine.
+```powershell
+Set-Location apps/web
+$env:PLAYWRIGHT_CHANNEL='chrome'
+npx playwright test --config profiling/object-scale.config.ts
+$env:TIKZ_VISUAL_REVIEW='1'
+npx playwright test --config playwright.config.ts e2e/workbench-visual.spec.ts --workers=1
+```
 
-## Development
+性能脚本会验证 2000 对象的选择、拖动帧间隔和提交延迟门槛，并记录 5000 对象压力数据。报告写入 `apps/web/profiling/traces/`；验收关闭 Playwright trace 和 CPU profiling，避免诊断工具改变时间。真实界面截图写入 `design/screenshots/`。当前验证范围和仍待完成的验收见 [验证记录](design/verification-2026-10-15.md)。
 
-With Node.js 22.13+ and npm 10.5+, run `npm ci` then `npm run dev:full` from the repository root. For a production build without installing a service, run `npm run build` followed by `npm run build:full`. System installation requires Linux; development builds can also run on Windows.
+## 来源与许可
 
-See [server configuration](apps/server/README.md) and [source installation details](design/build-and-upgrade.md).
-
-The [movement refactor review](design/movement-refactor-review-2026-10-09.md) records regression coverage and performance measurements. The tested 1000-object scene meets the selection and drag-frame targets; releasing a drag still takes about 0.8–1.1 seconds to finish rendering on the test machine.
-
-## License
-
-MIT; the original copyright and license notice are preserved in [LICENSE](LICENSE). See [NOTICE.md](NOTICE.md) for attribution and modification details. TikZ Bench is maintained independently; these modifications do not imply endorsement by the original author. Bundled third-party components retain their own licenses.
+本项目复用并改造了 [TikZ Editor](https://github.com/DominikPeters/tikz-editor) 的解析、语义和渲染内核。许可证为 MIT；原作者信息见 [LICENSE](LICENSE) 和 [NOTICE.md](NOTICE.md)。

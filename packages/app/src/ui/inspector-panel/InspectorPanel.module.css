@@ -33,10 +33,12 @@
 .strokePrecision input[type="range"] { width: 100%; accent-color: var(--accent, #537ee8); }
 .strokePrecision small { color: var(--color-warning); font-size: 11px; }
 @container (max-width: 245px) { .precisionGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .nodeFontToolbar { flex-wrap: wrap; } }
-.panel :is(input, select, button) { min-height: 28px; }
-.panel :is(input, select) { border-radius: 5px; }
+.panel :is(input, select, button) { min-height: 32px; }
+.panel :is(input, select) { border-radius: 8px; background: var(--bg-pane); }
 .panel input[type="range"] { min-height: 20px; }
 .panel button { transition: background-color 120ms ease, border-color 120ms ease; }
+.panel { background: var(--bg-pane); }
+.panel :is(input, select, textarea):hover { border-color: var(--accent-btn-border); }
 .panel :is(input, select, button):focus-visible { outline: 2px solid var(--accent, #537ee8); outline-offset: 1px; }
 
 .hint {

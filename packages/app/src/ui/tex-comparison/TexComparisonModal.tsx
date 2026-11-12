@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SessionSnapshot } from "../../compute";
 import { getActiveEditorPlatform } from "../../platform/current";
 import { useEditorStore } from "../../store/store";
 import { instrumentAdvancedDocument, type EditableCompilation } from "tikz-editor/edit/advanced-instrumentation";
 import { Modal } from "../Modal";
 import { sanitizeSvgMarkup } from "../svg-sanitize";
+import { embedProjectPngImages, ProjectCompilationContext, ProjectIdContext } from "../project-png-images";
 import { matrixAttribute, union, type Bounds } from "./geometry";
 import { measureComparison, type ComparisonResult, type ComparisonRow } from "./measure";
 import css from "./TexComparisonModal.module.css";
@@ -15,10 +16,12 @@ const differs = (row: ComparisonRow, tolerance: number) => [row.dimensions?.widt
 const unknown = (row: ComparisonRow) => !row.fast || !row.tex;
 
 export function TexComparisonModal({ snapshot, documentId, onClose }: { snapshot: SessionSnapshot; documentId: string; onClose: () => void }) {
+  const projectId = useContext(ProjectIdContext);
+  const compileSource = useContext(ProjectCompilationContext);
   const currentSource = useEditorStore((state) => state.source);
   const currentFigure = useEditorStore((state) => state.activeFigureId);
   const stale = currentSource !== snapshot.source || currentFigure !== snapshot.activeFigureId;
-  const [compiled, setCompiled] = useState<{ svg: string; compilation: EditableCompilation; elapsed: number } | null>(null);
+  const [compiled, setCompiled] = useState<{ svg: string; fastSvg: string; compilation: EditableCompilation; elapsed: number } | null>(null);
   const [model, setModel] = useState<ComparisonResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
@@ -34,7 +37,6 @@ export function TexComparisonModal({ snapshot, documentId, onClose }: { snapshot
   const fastRef = useRef<HTMLDivElement>(null), texRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const pan = useRef<{ id: number; x: number; y: number; bounds: Bounds; matrix: DOMMatrix } | null>(null);
-  const [fastSvg] = useState(() => sanitizeSvgMarkup(snapshot.svg!.svg));
 
   useEffect(() => {
     let cancelled = false; setBusy(true); setError("");
@@ -43,13 +45,17 @@ export function TexComparisonModal({ snapshot, documentId, onClose }: { snapshot
       const latex = getActiveEditorPlatform().latex;
       if (!latex) throw new Error("当前平台没有真实 TeX 编译服务，无法进行对照。");
       const compilation = instrumentAdvancedDocument(snapshot.source, snapshot.activeFigureId, { comparison: true });
-      const result = latex.compileEditable ? await latex.compileEditable(compilation.source, compilation.sourceVersion) : { svg: await latex.compileTikzToSvg(compilation.source) };
+      const document = compileSource(compilation.source);
+      const [result, fastSvg] = await Promise.all([
+        latex.compileEditable ? latex.compileEditable(document, compilation.sourceVersion, { engine: "xelatex", projectId: projectId ?? undefined }) : latex.compileTikzToSvg(document).then((svg) => ({ svg })),
+        embedProjectPngImages(sanitizeSvgMarkup(snapshot.svg!.svg), projectId)
+      ]);
       const svg = sanitizeSvgMarkup(result.svg);
-      if (!cancelled) setCompiled({ svg, compilation, elapsed: performance.now() - started });
+      if (!cancelled) setCompiled({ svg, fastSvg, compilation, elapsed: performance.now() - started });
     })().catch((error_: unknown) => { if (!cancelled) setError(error_ instanceof Error ? error_.message : String(error_)); })
       .finally(() => { if (!cancelled) setBusy(false); });
     return () => { cancelled = true; };
-  }, [snapshot, retry]);
+  }, [snapshot, retry, projectId, compileSource]);
 
   useLayoutEffect(() => {
     const fast = fastRef.current?.querySelector("svg"), tex = texRef.current?.querySelector("svg");
@@ -119,7 +125,7 @@ export function TexComparisonModal({ snapshot, documentId, onClose }: { snapshot
         <td><button type="button" onClick={() => { focus(row); }}>{row.label} {row.line ? `· L${row.line}` : ""}</button></td><td>{value(row.dimensions?.width)} / {value(row.dimensions?.height)}</td><td>{value(row.dimensions?.position)}</td><td>{value(row.textDimensions?.width)} / {value(row.textDimensions?.height)}</td><td>{value(row.baseline)}</td><td>{value(maxAnchor(row))}</td><td>{unknown(row) ? "未映射" : differs(row, tolerance) ? "有差异" : "已测项容差内"}</td>
       </tr>)}</tbody></table>{rows.length > 200 && <p>显示前 200 个对象，共 {rows.length} 个；可用筛选缩小范围。</p>}{model && !rows.length && <p>当前筛选没有对象。</p>}</div>
       <p className={css.note}>边界按 SVG 几何测量，包含箭头路径、不计描边外扩；文字比较绘制范围，字号变化可在叠加图中查看。— 表示该项未取得映射，不代表一致。{active?.fontSizes.length ? `选中对象的快速字号：${active.fontSizes.join(" / ")}pt。` : ""}</p>
-      <div ref={fastRef} className={css.measure} aria-hidden="true" dangerouslySetInnerHTML={{ __html: fastSvg }} /><div ref={texRef} className={css.measure} aria-hidden="true" dangerouslySetInnerHTML={{ __html: compiled?.svg ?? "" }} />
+      <div ref={fastRef} className={css.measure} aria-hidden="true" dangerouslySetInnerHTML={{ __html: compiled?.fastSvg ?? "" }} /><div ref={texRef} className={css.measure} aria-hidden="true" dangerouslySetInnerHTML={{ __html: compiled?.svg ?? "" }} />
     </div></Modal.Body>
     <Modal.Footer><Modal.SecondaryButton disabled={busy} onClick={() => { setRetry((token) => token + 1); }}>重新编译对照</Modal.SecondaryButton><Modal.SecondaryButton disabled={!active || stale} onClick={locate}>定位到画布</Modal.SecondaryButton><Modal.PrimaryButton onClick={onClose}>关闭</Modal.PrimaryButton></Modal.Footer>
   </Modal>;

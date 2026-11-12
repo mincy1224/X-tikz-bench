@@ -359,6 +359,17 @@ export function emitSvgModel(scene: SceneFigure, opts: EmitSvgOptions = {}): Svg
     }
 
     if (element.kind === "Path") {
+      if (element.projectPng) {
+        const bounds = computeSvgPathBounds(element.commands, viewBox);
+        if (!bounds) continue;
+        const transform = element.transform ? ` transform="${formatMatrix(worldTransformToSvgTransform(element.transform, viewBox))}"` : "";
+        const sourceId = escapeAttr(element.sourceRef.sourceId);
+        const key = escapeAttr(element.projectPng.key);
+        const x = fmt(bounds.minX), y = fmt(bounds.minY), w = fmt(bounds.maxX - bounds.minX), h = fmt(bounds.maxY - bounds.minY);
+        appendPart(`${element.id}:png`, element.sourceRef.sourceId, element.id,
+          `<g data-source-id="${sourceId}"${transform}><title>assets/${key}</title><svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><g data-png-placeholder=""><rect width="100%" height="100%" fill="#ddd" stroke="#aaa"/><text x="4" y="13" font-size="9" fill="#333">${key.endsWith(".pdf") ? "PDF" : "PNG"}: ${key}</text></g><image data-project-png="${key}" width="100%" height="100%" opacity="${fmt(element.style.textOpacity)}" preserveAspectRatio="none"/></svg></g>`);
+        continue;
+      }
       if (!hasDrawablePathCommands(element.commands)) {
         diagnostics.push({
           code: "empty-path",

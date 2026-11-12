@@ -8,16 +8,7 @@ type CategoryId = "general" | "editor" | "canvas" | "rendering";
 
 const MATHJAX_FONTS: { value: MathJaxFont; label: string }[] = [
   { value: "mathjax-newcm",   label: "New Computer Modern (default)" },
-  { value: "mathjax-asana",   label: "Asana Math" },
-  { value: "mathjax-bonum",   label: "Gyre Bonum" },
-  { value: "mathjax-dejavu",  label: "DejaVu" },
-  { value: "mathjax-fira",    label: "Fira / Fira Math" },
-  { value: "mathjax-modern",  label: "Latin Modern" },
-  { value: "mathjax-pagella", label: "Gyre Pagella" },
-  { value: "mathjax-schola",  label: "Gyre Schola" },
   { value: "mathjax-stix2",   label: "STIX2" },
-  { value: "mathjax-termes",  label: "Gyre Termes" },
-  { value: "mathjax-tex",     label: "TeX (classic MathJax v3)" },
 ];
 
 const CATEGORIES: { id: CategoryId; label: string }[] = [

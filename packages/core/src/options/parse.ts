@@ -218,11 +218,11 @@ function findTopLevelSeparator(input: string, separator: string): number {
       continue;
     }
 
-    if (char === "(") {
+    if (char === "(" && braceDepth === 0 && bracketDepth === 0) {
       parenDepth += 1;
       continue;
     }
-    if (char === ")") {
+    if (char === ")" && braceDepth === 0 && bracketDepth === 0) {
       parenDepth = Math.max(0, parenDepth - 1);
       continue;
     }
@@ -269,11 +269,11 @@ function splitTopLevelWithRanges(input: string, separator: string): Array<{ valu
       continue;
     }
 
-    if (char === "(") {
+    if (char === "(" && braceDepth === 0 && bracketDepth === 0) {
       parenDepth += 1;
       continue;
     }
-    if (char === ")") {
+    if (char === ")" && braceDepth === 0 && bracketDepth === 0) {
       parenDepth = Math.max(0, parenDepth - 1);
       continue;
     }

@@ -1,8 +1,8 @@
 .menuBar {
   display: flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 4px;
+  min-height: 32px;
+  padding: 0 17px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -19,13 +19,13 @@
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text);
   font-family: inherit;
   font-size: calc(var(--app-ui-scale, 1) * 11px);
-  height: 20px;
-  padding: 0 8px;
+  height: 26px;
+  padding: 0 10px;
   cursor: pointer;
   user-select: none;
 }
@@ -44,13 +44,14 @@
   position: absolute;
   top: calc(100% + 1px);
   left: 0;
-  min-width: 220px;
-  padding: 4px;
+  min-width: 236px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
   background: var(--bg-pane);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 10px color-mix(in srgb, black 20%, transparent);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgb(26 31 50 / 16%), 0 2px 8px rgb(26 31 50 / 7%);
 }
 
 .popupNested {
@@ -73,9 +74,9 @@
   grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 22px;
+  min-height: 30px;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text);
   font-family: inherit;

@@ -67,6 +67,7 @@ export type UseCanvasSelectionDerivedStateArgs = {
 };
 
 const SIDE_RESIZE_HANDLE_MIN_DIMENSION_PX = 96;
+const EMPTY_SCOPE_HIT_BOUNDS: ScopeHitBounds[] = [];
 
 export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedStateArgs) {
   const {
@@ -142,7 +143,9 @@ export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedSt
   );
   const fitNodeSourceIds = useMemo(() => {
     const ids = new Set<string>();
-    if (!snapshot.parseResult) {
+    // The resolver below walks the AST for each source id. Most documents have
+    // no fit key at all, so avoid that quadratic scan for ordinary drawings.
+    if (!snapshot.parseResult || !snapshot.source.includes("fit")) {
       return ids;
     }
     const allSourceIds = new Set<string>();
@@ -168,8 +171,11 @@ export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedSt
     for (const sourceId of fitNodeSourceIds) {
       reasons.set(sourceId, FIT_DIRECT_MANIPULATION_BLOCK_REASON);
     }
+    for (const element of snapshot.scene?.elements ?? []) {
+      if (element.kind === "Path" && element.projectPng?.locked) reasons.set(element.sourceRef.sourceId, "请先解锁 PNG。");
+    }
     return reasons;
-  }, [fitNodeSourceIds]);
+  }, [fitNodeSourceIds, snapshot.scene]);
   const adornmentTargetIds = useMemo(() => {
     const ids = new Set<string>();
     for (const element of snapshot.scene?.elements ?? []) {
@@ -284,8 +290,8 @@ export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedSt
     for (const [sourceId, handles] of bySource) {
       if (handles.every((handle) => dragCapability.draggableHandleIds.has(handle.id) && handle.rewriteMode !== "unsupported" || following.has(handle.id))) ids.add(sourceId);
     }
-    for (const fitId of fitNodeSourceIds) {
-      ids.delete(fitId);
+    for (const blockedId of directManipulationDisabledReasonBySourceId.keys()) {
+      ids.delete(blockedId);
     }
     for (const matrixCellId of matrixCellSourceIds) {
       ids.delete(matrixCellId);
@@ -311,7 +317,7 @@ export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedSt
       ids.add(nodeId);
     }
     return ids;
-  }, [adornmentTargetIds, dragCapability.draggableSourceIds, dragCapability.draggableHandleIds, fitNodeSourceIds, matrixCellSourceIds, matrixSourceIds, movableScopeSourceIds, pathAttachedNodeSourceIds, treeChildSourceIds, treeRootSourceIds, snapshot.parseResult, snapshot.editHandles, selectedElementIds, operationCapabilities]);
+  }, [adornmentTargetIds, dragCapability.draggableSourceIds, dragCapability.draggableHandleIds, directManipulationDisabledReasonBySourceId, matrixCellSourceIds, matrixSourceIds, movableScopeSourceIds, pathAttachedNodeSourceIds, treeChildSourceIds, treeRootSourceIds, snapshot.parseResult, snapshot.editHandles, selectedElementIds, operationCapabilities]);
 
   const selectionBounds = useMemo<SelectionBounds[]>(() => {
     const selected: SelectionBounds[] = [];
@@ -334,12 +340,13 @@ export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedSt
   }, [scopeOverlay.boundsByScopeId, selectedElementIds, selectedNodeSourceIds, snapshot.scene, sourceBoundsSvg, svgResult, treeChildSourceIds, treeRootSourceIds]);
 
   const selectedScopeHitBounds = useMemo<ScopeHitBounds[]>(() => {
-    return [...selectedElementIds]
+    const bounds = [...selectedElementIds]
       .filter((sourceId) => movableScopeSourceIds.has(sourceId) && scopeOverlay.scopesById.has(sourceId))
       .flatMap((sourceId) => {
         const bounds = sourceBoundsWorld.get(sourceId);
         return bounds ? [{ scopeId: sourceId, bounds }] : [];
       });
+    return bounds.length ? bounds : EMPTY_SCOPE_HIT_BOUNDS;
   }, [movableScopeSourceIds, scopeOverlay.scopesById, selectedElementIds, sourceBoundsWorld]);
 
   const selectionBoundsBySource = useMemo<ReadonlyMap<string, SvgBounds>>(() => {
@@ -803,10 +810,19 @@ export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedSt
     if (rotateHandleSourceId) {
       const rotateFrame = resizeFramesBySource.get(rotateHandleSourceId) ?? null;
       if (rotateFrame) {
+        const scale = Math.max(canvasTransform.scale, 1e-3);
+        const inset = 14 / scale;
+        const visibleBounds = viewportSize.width > 28 && viewportSize.height > 28 ? svgBounds(
+          pt(svgResult.viewBox.x - canvasTransform.translateX / scale + inset),
+          pt(svgResult.viewBox.y - canvasTransform.translateY / scale + inset),
+          pt(svgResult.viewBox.x + (viewportSize.width - canvasTransform.translateX) / scale - inset),
+          pt(svgResult.viewBox.y + (viewportSize.height - canvasTransform.translateY) / scale - inset)
+        ) : undefined;
         const rotateHandlePosition = resolveRotateHandlePosition(
           rotateFrame,
           canvasTransform.scale,
-          ROTATE_HANDLE_OFFSET_PX
+          ROTATE_HANDLE_OFFSET_PX,
+          visibleBounds
         );
         displays.push({
           key: `node-handle:${rotateHandleSourceId}:rotate`,
@@ -827,7 +843,7 @@ export function useCanvasSelectionDerivedState(args: UseCanvasSelectionDerivedSt
     }
 
     return displays;
-  }, [operationCapabilities, ROTATE_HANDLE_OFFSET_PX, canvasTransform.scale, collapsedDensePathEndpointsBySource, collapsedDensePathSourceIds, dragCapability.draggableHandleIds, draggableSourceIds, resizablePathShapeSourceIds, resizeFrameSourceIds, resizeFramesBySource, scopeResizeSourceIds, selectedElementIds, selectedHandles, selectionBoundsBySource, snapshot.editHandles, snapshot.parseResult, snapshot.scene, snapshot.source, svgResult, toolMode, treeChildSourceIds]);
+  }, [operationCapabilities, ROTATE_HANDLE_OFFSET_PX, canvasTransform.scale, canvasTransform.translateX, canvasTransform.translateY, viewportSize.width, viewportSize.height, collapsedDensePathEndpointsBySource, collapsedDensePathSourceIds, dragCapability.draggableHandleIds, draggableSourceIds, resizablePathShapeSourceIds, resizeFrameSourceIds, resizeFramesBySource, scopeResizeSourceIds, selectedElementIds, selectedHandles, selectionBoundsBySource, snapshot.editHandles, snapshot.parseResult, snapshot.scene, snapshot.source, svgResult, toolMode, treeChildSourceIds]);
 
   const hitRegions = useMemo(() => {
     if (!snapshot.scene || !svgResult) return [];

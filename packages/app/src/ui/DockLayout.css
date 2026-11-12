@@ -32,26 +32,27 @@
   --color-border-background: var(--bg-header);
   --color-border-divider-line: var(--border);
 
-  --font-size: 11px;
+  --font-size: 12px;
   --font-family: var(--font-ui);
 }
 
 /* Compact tab strip */
 .flexlayout__tabset_tabbar_outer {
-  height: 24px !important;
-  min-height: 24px !important;
-  background: var(--bg-app) !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  background: var(--bg-header) !important;
   -webkit-user-select: none;
   user-select: none;
 }
 
 .flexlayout__tab_button {
-  padding: 2px 6px !important;
+  padding: 6px 13px !important;
   font-size: 11px !important;
+  font-weight: 650;
   border: 1px solid transparent !important;
   border-bottom: none !important;
-  border-radius: 0 !important;
-  margin-bottom: -1px;
+  border-radius: 7px 7px 0 0 !important;
+  margin-bottom: 0;
   background: transparent !important;
   box-shadow: none !important;
   -webkit-user-select: none;
@@ -70,14 +71,14 @@
 
 .flexlayout__tab_button--selected {
   background: var(--bg-pane) !important;
-  border-color: var(--border) !important;
-  border-bottom: 1px solid var(--bg-pane) !important;
+  border-color: var(--border-light) !important;
+  border-bottom: 2px solid var(--accent) !important;
 }
 
 .flexlayout__tab_button--selected:hover {
   background: var(--bg-pane) !important;
-  border-color: var(--border) !important;
-  border-bottom: 1px solid var(--bg-pane) !important;
+  border-color: var(--border-light) !important;
+  border-bottom: 2px solid var(--accent) !important;
 }
 
 .flexlayout__tab_button--unselected {
@@ -107,7 +108,7 @@
 
 /* Splitter styling */
 .flexlayout__splitter {
-  background-color: var(--border) !important;
+  background-color: var(--border-light) !important;
 }
 
 .flexlayout__splitter:hover {
@@ -164,6 +165,11 @@
 .flexlayout__tabset_header {
   box-shadow: none !important;
 }
+
+.flexlayout__border { background: var(--bg-header) !important; }
+.flexlayout__border_button { padding: 12px 7px !important; color: var(--text-muted) !important; font: 600 11px var(--font-ui) !important; background: transparent !important; border-radius: 7px !important; }
+.flexlayout__border_button:hover { background: var(--btn-hover-bg) !important; }
+.flexlayout__border_button--selected { background: var(--accent-btn-bg) !important; color: var(--accent-dark) !important; }
 
 /* Edge dock indicators */
 .flexlayout__edge_rect {

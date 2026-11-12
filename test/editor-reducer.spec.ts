@@ -3,6 +3,7 @@ import { editorReducer, makeInitialState, DEFAULT_SOURCE } from "../packages/app
 import type { EditorAction, EditorState, HistoryEntry } from "../packages/app/src/store/types.js";
 import type { TikzFigureInventoryItem } from "../packages/core/src/ast/types.js";
 import { makeEmptySnapshot } from "../packages/app/src/compute.js";
+import { parseTikz } from "../packages/core/src/parser/index.js";
 import { PROPERTY_WRITE_CLEANUP_NOOP_REASON } from "../packages/core/src/edit/actions.js";
 import type { WorldPoint } from "../packages/core/src/coords/points.js";
 import type { EditHandle } from "../packages/core/src/semantic/types.js";
@@ -174,6 +175,19 @@ describe("editorReducer – CODE_EDITED", () => {
 // ── COMPUTE_REQUESTED / SNAPSHOT_READY ────────────────────────────────────────
 
 describe("editorReducer – compute lifecycle", () => {
+  it("clears stale selection after the current source becomes an empty figure, but preserves it on compute failure", () => {
+    const source = String.raw`\begin{tikzpicture}\end{tikzpicture}`;
+    const state = applyActions([
+      { type: "SELECT", id: "path:0", additive: false },
+      { type: "CODE_EDITED", source },
+      { type: "COMPUTE_REQUESTED", requestId: "empty" }
+    ]);
+    const failed = editorReducer(state, { type: "SNAPSHOT_READY", requestId: "empty", snapshot: makeEmptySnapshot(source) });
+    expect([...failed.selectedElementIds]).toEqual(["path:0"]);
+    const empty = editorReducer(state, { type: "SNAPSHOT_READY", requestId: "empty", snapshot: { ...makeEmptySnapshot(source), parseResult: parseTikz(source) } });
+    expect(empty.selectedElementIds.size).toBe(0);
+  });
+
   it("COMPUTE_REQUESTED stores the pending request id", () => {
     const state = applyActions([{ type: "COMPUTE_REQUESTED", requestId: "req-1" }]);
     expect(state.pendingRequestId).toBe("req-1");

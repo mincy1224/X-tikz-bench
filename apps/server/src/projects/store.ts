@@ -3,6 +3,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
+import { ASSET_KEY, MAX_PROJECT_PNG_BYTES, referencedPngKeys, type ProjectAsset } from "./png.js";
+import { prepareAsset, type PreparedAsset } from "./prepare-asset.js";
 
 export type Project = {
   id: string;
@@ -16,7 +18,7 @@ export type Project = {
   deletedAt: string | null;
 };
 
-const DEFAULT_SOURCE = "\\begin{tikzpicture}\n\n\\end{tikzpicture}\n";
+const DEFAULT_SOURCE = "";
 
 function quote(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
@@ -24,12 +26,12 @@ function quote(value: string): string {
 
 function runSql(config: ServerConfig, sql: string, json = false): Promise<string> {
   return new Promise((resolve, reject) => {
-    const args = json ? ["-json", config.databasePath] : [config.databasePath];
+    const args = [...(json ? ["-json"] : []), "-cmd", ".timeout 5000", config.databasePath];
     const child = spawn(config.sqliteBin, args, { shell: false, windowsHide: true });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
     child.once("error", reject);
     child.once("close", (code) => {
       if (code === 0) resolve(stdout);
@@ -103,6 +105,22 @@ CREATE TABLE IF NOT EXISTS project_revisions (
   created_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS project_pngs (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  data BLOB NOT NULL,
+  PRIMARY KEY(project_id, key)
+);
+CREATE TABLE IF NOT EXISTS project_asset_details (
+  project_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
+  preview BLOB,
+  PRIMARY KEY(project_id, key),
+  FOREIGN KEY(project_id,key) REFERENCES project_pngs(project_id,key) ON DELETE CASCADE
+);
 CREATE INDEX IF NOT EXISTS idx_projects_updated ON projects(updated_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_active_name ON projects(name) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_revisions_project ON project_revisions(project_id, revision DESC);
@@ -143,15 +161,84 @@ async function checkedWrite(config: ServerConfig, sql: string): Promise<void> {
   }
 }
 
-export function createProject(config: ServerConfig, name: string, source = DEFAULT_SOURCE, description = ""): Promise<Project> {
+export function createProject(config: ServerConfig, name: string, source = DEFAULT_SOURCE, description = "", copyFrom?: string, assets: PreparedAsset[] = []): Promise<Project> {
   return serializeWrite(async () => {
     name = projectName(name);
     description = projectDescription(description);
     const id = randomUUID();
     const now = new Date().toISOString();
-    await checkedWrite(config, `INSERT INTO projects(id,name,description,source,revision,created_at,updated_at) VALUES(${quote(id)},${quote(name)},${quote(description)},${quote(source)},1,${quote(now)},${quote(now)});`);
+    if (assets.reduce((sum, asset) => sum + asset.data.length, 0) > MAX_PROJECT_PNG_BYTES) throw new Error("项目素材超过 50 MiB。");
+    if (copyFrom) await getReferencedProjectPngs(config, copyFrom, source);
+    await checkedWrite(config, `INSERT INTO projects(id,name,description,source,revision,created_at,updated_at) VALUES(${quote(id)},${quote(name)},${quote(description)},${quote(source)},1,${quote(now)},${quote(now)});
+      ${copyFrom ? `INSERT INTO project_pngs(project_id,key,data) SELECT ${quote(id)},key,data FROM project_pngs WHERE project_id=${quote(copyFrom)};
+        INSERT INTO project_asset_details(project_id,key,name,width,height,preview) SELECT ${quote(id)},key,name,width,height,preview FROM project_asset_details WHERE project_id=${quote(copyFrom)};` : ""}
+      ${assets.map((asset) => insertAssetSql(id, asset)).join("\n")}`);
     return (await getProject(config, id))!;
   });
+}
+
+function insertAssetSql(id: string, asset: PreparedAsset): string {
+  return `INSERT OR IGNORE INTO project_pngs(project_id,key,data) VALUES(${quote(id)},${quote(asset.key)},X'${asset.data.toString("hex")}');
+    INSERT OR IGNORE INTO project_asset_details(project_id,key,name,width,height,preview) VALUES(${quote(id)},${quote(asset.key)},${quote(asset.name)},${asset.width},${asset.height},${asset.preview ? `X'${asset.preview.toString("hex")}'` : "NULL"});`;
+}
+
+export async function storeProjectPng(config: ServerConfig, id: string, data: Buffer, name = "", extension: "png" | "pdf" = "png") {
+  const asset = await prepareAsset(data, name, extension);
+  return serializeWrite(async () => {
+    const project = await getProject(config, id);
+    if (!project || project.deletedAt) return null;
+    const { key, width, height } = asset;
+    const size = Number((await runSql(config, `SELECT coalesce(sum(length(data)),0) FROM project_pngs WHERE project_id=${quote(id)} AND key!=${quote(key)};`)).trim());
+    if (size + data.length > MAX_PROJECT_PNG_BYTES) throw new Error("项目的 PNG 资源已超过 50 MiB。");
+    await checkedWrite(config, insertAssetSql(id, asset));
+    return { key, width, height, name: asset.name };
+  });
+}
+
+export async function getProjectPng(config: ServerConfig, id: string, key: string): Promise<Buffer | null> {
+  if (!ASSET_KEY.test(key)) return null;
+  const hex = (await runSql(config, `SELECT hex(data) FROM project_pngs JOIN projects ON projects.id=project_pngs.project_id WHERE project_id=${quote(id)} AND key=${quote(key)} AND deleted_at IS NULL;`)).trim();
+  return hex ? Buffer.from(hex, "hex") : null;
+}
+
+export async function listProjectAssets(config: ServerConfig, id: string): Promise<ProjectAsset[]> {
+  const json = await runSql(config, `SELECT p.key, coalesce(d.name,p.key) AS name, d.width, d.height,
+    CASE WHEN d.width IS NULL THEN hex(substr(p.data,1,24)) END AS header
+    FROM project_pngs p LEFT JOIN project_asset_details d ON p.project_id=d.project_id AND p.key=d.key
+    WHERE p.project_id=${quote(id)} ORDER BY d.name,p.key;`, true);
+  const rows = (json.trim() ? JSON.parse(json) : []) as Array<ProjectAsset & { header: string | null }>;
+  return rows.map(({ key, name, width, height, header }) => {
+    if (!header) return { key, name, width, height };
+    const bytes = Buffer.from(header, "hex");
+    return { key, name, width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  });
+}
+
+export async function getAssetPreview(config: ServerConfig, id: string, key: string): Promise<Buffer | null> {
+  if (key.endsWith(".png")) return getProjectPng(config, id, key);
+  if (!ASSET_KEY.test(key)) return null;
+  const hex = (await runSql(config, `SELECT hex(preview) FROM project_asset_details JOIN projects ON projects.id=project_id
+    WHERE project_id=${quote(id)} AND key=${quote(key)} AND deleted_at IS NULL;`)).trim();
+  return hex ? Buffer.from(hex, "hex") : null;
+}
+
+export async function getAllProjectAssets(config: ServerConfig, id: string): Promise<Map<string, Buffer>> {
+  const assets = new Map<string, Buffer>();
+  for (const { key } of await listProjectAssets(config, id)) {
+    const data = await getProjectPng(config, id, key);
+    if (data) assets.set(`assets/${key}`, data);
+  }
+  return assets;
+}
+
+export async function getReferencedProjectPngs(config: ServerConfig, id: string | undefined, source: string): Promise<Map<string, Buffer>> {
+  const result = new Map<string, Buffer>();
+  for (const key of referencedPngKeys(source)) {
+    const data = id ? await getProjectPng(config, id, key) : null;
+    if (!data) throw new Error(`缺少图片文件：assets/${key}`);
+    result.set(`assets/${key}`, data);
+  }
+  return result;
 }
 
 export function updateProject(config: ServerConfig, id: string, input: { name?: string; description?: string; source?: string; expectedRevision?: number; thumbnailSvg?: string | null }): Promise<Project | "conflict" | null> {

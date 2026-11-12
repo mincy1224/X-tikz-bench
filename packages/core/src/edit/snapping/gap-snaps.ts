@@ -174,20 +174,22 @@ export function collectGapSnaps({
   visibleGaps,
   minOffset,
   nearest,
-  enabledAxis
+  enabledAxis,
+  movingEdges
 }: {
   selectionBounds: WorldBounds;
   visibleGaps: { horizontal: Gap[]; vertical: Gap[] };
   minOffset: AxisMinOffset;
   nearest: AxisSnapBuckets;
   enabledAxis?: Axis | null;
+  movingEdges?: { x?: "min" | "max"; y?: "min" | "max" };
 }): void {
   const centerX = (selectionBounds.minX + selectionBounds.maxX) / 2;
   const centerY = (selectionBounds.minY + selectionBounds.maxY) / 2;
   const width = selectionBounds.maxX - selectionBounds.minX;
   const height = selectionBounds.maxY - selectionBounds.minY;
 
-  if (enabledAxis !== "y") {
+  if (enabledAxis !== "y" && (!movingEdges || movingEdges.x)) {
     for (const gap of visibleGaps.horizontal) {
       if (!rangesOverlap([selectionBounds.minY, selectionBounds.maxY], gap.overlap)) {
         continue;
@@ -195,7 +197,7 @@ export function collectGapSnaps({
 
       const gapMidX = gap.startSide[0].x + gap.length / 2;
       const centerOffset = gapMidX - centerX;
-      if (gap.length > width) {
+      if (!movingEdges && gap.length > width) {
         pushGapCandidate({
           axis: "x",
           direction: "center_horizontal",
@@ -208,7 +210,7 @@ export function collectGapSnaps({
 
       const distanceToEnd = selectionBounds.minX - gap.endBounds.maxX;
       const sideOffsetRight = gap.length - distanceToEnd;
-      pushGapCandidate({
+      if (!movingEdges || movingEdges.x === "min") pushGapCandidate({
         axis: "x",
         direction: "side_right",
         gap,
@@ -219,7 +221,7 @@ export function collectGapSnaps({
 
       const distanceToStart = gap.startBounds.minX - selectionBounds.maxX;
       const sideOffsetLeft = distanceToStart - gap.length;
-      pushGapCandidate({
+      if (!movingEdges || movingEdges.x === "max") pushGapCandidate({
         axis: "x",
         direction: "side_left",
         gap,
@@ -230,7 +232,7 @@ export function collectGapSnaps({
     }
   }
 
-  if (enabledAxis !== "x") {
+  if (enabledAxis !== "x" && (!movingEdges || movingEdges.y)) {
     for (const gap of visibleGaps.vertical) {
       if (!rangesOverlap([selectionBounds.minX, selectionBounds.maxX], gap.overlap)) {
         continue;
@@ -238,7 +240,7 @@ export function collectGapSnaps({
 
       const gapMidY = gap.startSide[0].y + gap.length / 2;
       const centerOffset = gapMidY - centerY;
-      if (gap.length > height) {
+      if (!movingEdges && gap.length > height) {
         pushGapCandidate({
           axis: "y",
           direction: "center_vertical",
@@ -251,7 +253,7 @@ export function collectGapSnaps({
 
       const distanceToStart = gap.startBounds.minY - selectionBounds.maxY;
       const sideOffsetTop = distanceToStart - gap.length;
-      pushGapCandidate({
+      if (!movingEdges || movingEdges.y === "max") pushGapCandidate({
         axis: "y",
         direction: "side_top",
         gap,
@@ -262,7 +264,7 @@ export function collectGapSnaps({
 
       const distanceToEnd = selectionBounds.minY - gap.endBounds.maxY;
       const sideOffsetBottom = gap.length - distanceToEnd;
-      pushGapCandidate({
+      if (!movingEdges || movingEdges.y === "min") pushGapCandidate({
         axis: "y",
         direction: "side_bottom",
         gap,

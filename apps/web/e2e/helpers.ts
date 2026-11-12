@@ -34,7 +34,7 @@ export async function gotoApp(page: Page, path = "/"): Promise<void> {
     await page.getByRole("button", { name: "确定", exact: true }).click();
     await page.waitForURL(/\/project\/[0-9a-f-]+$/u);
   }
-  await expect(page.getByTestId("tab-strip")).toBeVisible();
+  await expect(page.locator('[data-canvas-viewport="true"]')).toBeVisible();
 }
 
 export async function openMenuSection(page: Page, section: MenuSection): Promise<void> {

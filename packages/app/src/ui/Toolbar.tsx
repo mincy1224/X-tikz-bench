@@ -21,25 +21,32 @@ import type { ToolMode } from "../store/types";
 import css from "./Toolbar.module.css";
 import { FormatPainterButton } from "./format-painter";
 
-const SHAPE_POPUP_CHOICES = NODE_SHAPE_OPTIONS.map((option) => ({
+const COMMON_SHAPES = ["rectangle", "circle", "ellipse", "isosceles triangle", "diamond", "trapezium", "regular polygon"];
+const SHAPE_POPUP_CHOICES = [
+  { id: "square", label: "正方形", previewSvg: '<svg viewBox="0 0 32 32"><rect x="6" y="6" width="20" height="20" fill="none" stroke="currentColor"/></svg>' },
+  { id: "round-corner rectangle", label: "圆角矩形", previewSvg: '<svg viewBox="0 0 32 32"><rect x="3" y="7" width="26" height="18" rx="4" fill="none" stroke="currentColor"/></svg>' },
+  ...[...NODE_SHAPE_OPTIONS].sort((a, b) => (COMMON_SHAPES.includes(a.value) ? COMMON_SHAPES.indexOf(a.value) : 99) - (COMMON_SHAPES.includes(b.value) ? COMMON_SHAPES.indexOf(b.value) : 99)).map((option) => ({
   id: option.value,
   label: option.label,
   previewSvg: GENERATED_NODE_SHAPE_PREVIEWS[option.value] ?? null
-}));
+}))];
 
 type ToolbarProps = {
+  projectMode?: boolean;
   updateChip?: {
     version: string;
     onClick: () => void;
   } | null;
 };
 
-export function Toolbar({ updateChip = null }: ToolbarProps) {
+export function Toolbar({ projectMode = false, updateChip = null }: ToolbarProps) {
   const toolMode = useEditorStore((s) => s.toolMode);
   const bucketFillColor = useEditorStore((s) => s.bucketFillColor);
   const selectedAddShape = useEditorStore((s) => s.selectedAddShape);
   const selectedAddMatrixRows = useEditorStore((s) => s.selectedAddMatrixRows);
   const selectedAddMatrixColumns = useEditorStore((s) => s.selectedAddMatrixColumns);
+  const matrixStyle = useEditorStore((s) => s.selectedAddMatrixStyle);
+  const [matrixOrientation, setMatrixOrientation] = useState<"matrix" | "row" | "column">("matrix");
   const dispatch = useEditorStore((s) => s.dispatch);
   const projectNamedColorSwatches = useProjectNamedColorSwatches();
   const namedColorLookup = useMemo(
@@ -56,7 +63,7 @@ export function Toolbar({ updateChip = null }: ToolbarProps) {
     isDesktop &&
     typeof navigator !== "undefined" &&
     /(mac|iphone|ipad)/i.test(navigator.platform);
-  const showAppTitle = !isDesktop;
+  const showAppTitle = !isDesktop && !projectMode;
 
   // Close popup when tool mode changes (unless it's a popup that can be used independently)
   useEffect(() => {
@@ -128,12 +135,25 @@ export function Toolbar({ updateChip = null }: ToolbarProps) {
       );
     }
     if (popupKind === "matrix-picker") {
-      const maxColumns = 10;
-      const maxRows = 8;
+      const maxColumns = matrixOrientation === "column" ? 1 : 10;
+      const maxRows = matrixOrientation === "row" ? 1 : 8;
       const isSelected = (row: number, column: number): boolean =>
         row <= matrixPreviewRows && column <= matrixPreviewColumns;
       return (
         <ToolbarPopupSection title={`Insert Matrix (${matrixPreviewColumns} x ${matrixPreviewRows})`}>
+          <label>布局 <select aria-label="矩阵布局" value={matrixOrientation} onChange={(event) => {
+            const orientation = event.currentTarget.value as typeof matrixOrientation;
+            setMatrixOrientation(orientation);
+            if (orientation !== "matrix" && (matrixStyle === "default" || matrixStyle === "math")) {
+              dispatch({ type: "SET_ADD_MATRIX_PRESET", rows: orientation === "row" ? 1 : 3, columns: orientation === "column" ? 1 : 3, style: "grid-empty" });
+            }
+          }}><option value="matrix">矩阵</option><option value="row">行向量</option><option value="column">列向量</option></select></label>
+          <label>内容 <select aria-label="矩阵内容" value={matrixStyle} onChange={(event) => {
+            dispatch({ type: "SET_ADD_MATRIX_PRESET", rows: selectedAddMatrixRows, columns: selectedAddMatrixColumns, style: event.currentTarget.value as typeof matrixStyle });
+          }}>
+            {matrixOrientation === "matrix" ? <><option value="default">普通矩阵</option><option value="math">数学矩阵</option></> : null}
+            <option value="grid-empty">空白格</option><option value="grid-text">带文字的方格</option>
+          </select></label>
           <div
             className={popupCss.matrixPicker}
             data-testid="toolbar-matrix-picker-grid"
@@ -371,7 +391,7 @@ export function Toolbar({ updateChip = null }: ToolbarProps) {
           return separator ? [separator, button] : [button];
         })}
       </div>
-      <FormatPainterButton />
+      <FormatPainterButton className={`${css.btn} ${css.formatPainter}`} />
       <div className={css.spacer} />
       {updateChip ? (
         <RenderedTooltip content={`Install update ${updateChip.version}`}>

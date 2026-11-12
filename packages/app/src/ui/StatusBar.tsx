@@ -14,7 +14,7 @@ const ZOOM_LEVELS = [25, 50, 75, 100, 125, 150, 200, 300, 400] as const;
 const MIN_ZOOM_PERCENT = 25;
 const MAX_ZOOM_PERCENT = 400;
 
-export function StatusBar() {
+export function StatusBar({ projectMode = false }: { projectMode?: boolean }) {
   const snapshot = useEditorStore((s) => s.snapshot);
   const activeFigureId = useEditorStore((s) => s.activeFigureId);
   const currentDocument = useEditorStore((s) => s.documents[s.activeDocumentId] ?? null);
@@ -172,7 +172,7 @@ export function StatusBar() {
       <div className={css.spacer} />
 
       <div className={css.group}>
-        {currentDocument?.dirty && (
+        {!projectMode && currentDocument?.dirty && (
           <div className={css.cell}>
             <span>Unsaved</span>
           </div>

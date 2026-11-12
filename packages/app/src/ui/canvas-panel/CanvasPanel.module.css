@@ -123,9 +123,8 @@
   touch-action: none;
   outline: none;
   background-color: var(--bg-canvas-area);
-  background-image:
-    radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.16), transparent 45%),
-    radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.1), transparent 40%);
+  background-image: radial-gradient(color-mix(in srgb, var(--border) 44%, transparent) 0.6px, transparent 0.6px);
+  background-size: 18px 18px;
 }
 
 .viewportTool {
@@ -163,7 +162,7 @@
   position: absolute;
   inset: 0;
   background: #fff;
-  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 0 1px rgb(50 55 64 / 5%), 0 12px 34px rgb(50 55 64 / 10%), 0 3px 8px rgb(50 55 64 / 5%);
   pointer-events: none;
   -webkit-user-select: none;
   user-select: none;

@@ -1,5 +1,5 @@
 import { svgPoint, pt } from "tikz-editor/coords/index";
-import type { SvgPoint, WorldPoint } from "../coords/types";
+import type { SvgBounds, SvgPoint, WorldPoint } from "../coords/types";
 import type { ResizeFrame } from "./resize-frames";
 
 const EPSILON = 1e-9;
@@ -78,7 +78,8 @@ export function resolveDraggedRotateDeg(args: {
 export function resolveRotateHandlePosition(
   frame: ResizeFrame,
   scale: number,
-  offsetPx: number
+  offsetPx: number,
+  visibleBounds?: SvgBounds
 ): { anchorSvg: SvgPoint; handleSvg: SvgPoint } {
   const topLeft = frame.cornersByRole["top-left"].svg;
   const topRight = frame.cornersByRole["top-right"].svg;
@@ -102,5 +103,14 @@ export function resolveRotateHandlePosition(
     pt(anchorSvg.x + outwardUnit.x * offsetSvg),
     pt(anchorSvg.y + outwardUnit.y * offsetSvg)
   );
+  if (visibleBounds) {
+    return {
+      anchorSvg,
+      handleSvg: svgPoint(
+        pt(Math.max(visibleBounds.minX, Math.min(visibleBounds.maxX, handleSvg.x))),
+        pt(Math.max(visibleBounds.minY, Math.min(visibleBounds.maxY, handleSvg.y)))
+      )
+    };
+  }
   return { anchorSvg, handleSvg };
 }

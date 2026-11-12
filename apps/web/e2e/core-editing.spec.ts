@@ -33,7 +33,8 @@ test.beforeEach(async ({ page }) => {
 
 function readShiftValue(source: string, axis: "x" | "y"): number | null {
   const match = source.match(new RegExp(`${axis}shift=([-0-9.]+)pt`));
-  return match ? Number(match[1]) : null;
+  const tuple = source.match(/\bshift=\{\(([-0-9.]+)pt,([-0-9.]+)pt\)\}/u);
+  return match || tuple ? Number(match?.[1] ?? 0) + Number(tuple?.[axis === "x" ? 1 : 2] ?? 0) : null;
 }
 
 function readScaleValue(source: string, axis: "x" | "y"): number | null {
@@ -199,7 +200,7 @@ test("node context menu can position a node relative to an earlier named node", 
   await expect(page.getByTestId("node-position-link")).toHaveCount(0);
 });
 
-test("pending node-position targeting cancels on undo and document switch", async ({ page }) => {
+test("pending node-position targeting cancels on undo and project switch", async ({ page }) => {
   await gotoApp(page);
   const source = String.raw`\begin{tikzpicture}
 \node[draw] (A) at (0,0) {A};
@@ -220,13 +221,14 @@ test("pending node-position targeting cancels on undo and document switch", asyn
   await page.getByTestId("canvas-context-cmd-node.position-relative-to").click();
   await expect(page.getByTestId("canvas-selection-hint")).toBeVisible();
 
-  await page.getByTestId("tab-new").click();
+  await page.getByRole("button", { name: "← Projects", exact: true }).click();
+  await gotoApp(page);
 
   await expect(page.getByTestId("canvas-selection-hint")).toHaveCount(0);
   await expect(page.getByTestId("node-anchor-dot")).toHaveCount(0);
 });
 
-test("node relative positioning target reports negative spacing when visual placement cannot be preserved", async ({ page }) => {
+test("node relative positioning preserves overlapping placement with signed distances", async ({ page }) => {
   await gotoApp(page);
   const source = String.raw`\begin{tikzpicture}
   \node[draw, inner sep=4pt] (a) at (-0.2,2.66) {node a};
@@ -237,24 +239,15 @@ test("node relative positioning target reports negative spacing when visual plac
   await clickHitRegionByTargetId(page, "path:1", { button: "right" });
   await page.getByTestId("canvas-context-cmd-node.position-relative-to").click();
   const targetDot = page.getByTestId("node-anchor-dot");
-  await expect(targetDot).toHaveAttribute("data-anchor-disabled", "true");
+  await expect(targetDot).not.toHaveAttribute("data-anchor-disabled", "true");
   await expect(targetDot.locator("title")).toHaveCount(0);
   await expect(page.locator("[data-hit-region-target-id='path:0'] title")).toHaveCount(0);
-  await targetDot.hover();
-
-  await expect.poll(async () => targetDot.evaluate((el) => getComputedStyle(el).cursor)).toBe("not-allowed");
-  await expect(page.getByTestId("node-position-target-tooltip")).toContainText("overlap vertically");
-  await expect(page.getByTestId("canvas-selection-hint")).toHaveText(
-    "Select a named node to position relative to. Esc cancels."
-  );
-
   await targetDot.click();
-
   await expect(page.getByTestId("canvas-warning-message")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-selection-hint")).toHaveText(
-    "Select a named node to position relative to. Esc cancels."
-  );
-  await expect.poll(async () => readSource(page)).toBe(source);
+  await expect.poll(async () => readSource(page)).toContain("of a");
+  await clickHitRegionByTargetId(page, "path:1", { button: "right" });
+  await page.getByTestId("canvas-context-cmd-node.convert-to-absolute").click();
+  await expect.poll(async () => readSource(page)).toContain("at (1.2,2.43)");
 });
 
 test("node relative positioning preserves app text metrics when converted back to absolute", async ({ page }) => {
@@ -401,6 +394,11 @@ test("neutral path-attached node drag rewrites pos without introducing side regi
   expect(sourceAfter).not.toContain("above");
   expect(sourceAfter).not.toContain("below");
   expect(sourceAfter).not.toContain("auto");
+  await focusCanvas(page);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(async () => readSource(page)).toBe(initialSource);
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  await expect.poll(async () => readSource(page)).toBe(sourceAfter);
 });
 
 test("path-attached directional distance drag is stable from off-center pickup", async ({ page }) => {
@@ -535,7 +533,7 @@ test("clearing source editor does not trigger maximum update depth crash", async
   await page.keyboard.press("Delete");
 
   await expect.poll(async () => readStoreSource(page)).toBe("");
-  await expect(page.getByTestId("tab-strip")).toBeVisible();
+  await expect(page.locator('[data-canvas-viewport="true"]')).toBeVisible();
   expect(reactDepthErrors).toEqual([]);
 });
 
@@ -799,7 +797,7 @@ test("canvas context menu opens and runs duplicate command", async ({ page }) =>
 
 test("group honors editor indent size and supports pointer-up drill-down behavior", async ({ page }) => {
   await gotoApp(page);
-  await openMenuCommand(page, "file", "file.open-settings");
+  await page.getByRole("button", { name: "工作台设置", exact: true }).click();
   await page.getByTestId("settings-category-editor").click();
   await page.selectOption("#setting-indent-size", "4");
   await page.getByTestId("settings-modal").getByRole("button", { name: "Close settings" }).click();
@@ -852,12 +850,9 @@ test("group honors editor indent size and supports pointer-up drill-down behavio
   await expect(page.getByTestId("canvas-context-menu")).toBeVisible();
   await expect(page.getByTestId("canvas-context-cmd-edit.ungroup")).toBeEnabled();
   await page.keyboard.press("Escape");
-  await expect(page.getByText("scope", { exact: true })).toBeVisible();
-  await expect(page.getByText("Transform", { exact: true })).toBeVisible();
-  await expect(page.getByText("X shift", { exact: true })).toBeVisible();
-  await expect(page.getByText("Y shift", { exact: true })).toBeVisible();
-  await expect(page.getByText("X scale", { exact: true })).toBeVisible();
-  await expect(page.getByText("Y scale", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "尺寸与位置", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "中心 X", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "中心 Y", exact: true })).toBeVisible();
   await openMenuSection(page, "edit");
   await expect(page.getByTestId("menu-cmd-edit.ungroup")).toBeEnabled();
   await page.getByRole("menuitem", { name: "Transform" }).hover();
@@ -1250,9 +1245,9 @@ test("selected scope drag from member area tracks cursor displacement without ru
   }
 
   const beforeSource = await readStoreSource(page);
-  const beforeMatch = beforeSource.match(/xshift=([-0-9.]+)pt/);
-  expect(beforeMatch).not.toBeNull();
-  if (!beforeMatch) {
+  const beforeShift = readShiftValue(beforeSource, "x");
+  expect(beforeShift).not.toBeNull();
+  if (beforeShift === null) {
     return;
   }
 
@@ -1287,13 +1282,13 @@ test("selected scope drag from member area tracks cursor displacement without ru
   }).toBeLessThan(260);
 
   const afterSource = await readStoreSource(page);
-  const afterMatch = afterSource.match(/xshift=([-0-9.]+)pt/);
-  expect(afterMatch).not.toBeNull();
-  if (!afterMatch) {
+  const afterShift = readShiftValue(afterSource, "x");
+  expect(afterShift).not.toBeNull();
+  if (afterShift === null) {
     return;
   }
 
-  const xshiftDelta = Number(afterMatch[1]) - Number(beforeMatch[1]);
+  const xshiftDelta = afterShift - beforeShift;
   expect(Math.abs(xshiftDelta)).toBeLessThan(400);
   expect(xshiftDelta).toBeGreaterThan(0);
 });
@@ -1312,9 +1307,9 @@ test("unselected member drag promotes to scope drag without runaway shifts", asy
   await expect.poll(async () => readSelectedSourceIds(page)).toEqual([]);
 
   const beforeSource = await readStoreSource(page);
-  const beforeMatch = beforeSource.match(/xshift=([-0-9.]+)pt/);
-  expect(beforeMatch).not.toBeNull();
-  if (!beforeMatch) {
+  const beforeShift = readShiftValue(beforeSource, "x");
+  expect(beforeShift).not.toBeNull();
+  if (beforeShift === null) {
     return;
   }
 
@@ -1336,13 +1331,13 @@ test("unselected member drag promotes to scope drag without runaway shifts", asy
   await expect.poll(async () => readSelectionOverlayBoxSourceIds(page)).toEqual(["scope:1"]);
 
   const afterSource = await readStoreSource(page);
-  const afterMatch = afterSource.match(/xshift=([-0-9.]+)pt/);
-  expect(afterMatch).not.toBeNull();
-  if (!afterMatch) {
+  const afterShift = readShiftValue(afterSource, "x");
+  expect(afterShift).not.toBeNull();
+  if (afterShift === null) {
     return;
   }
 
-  const xshiftDelta = Number(afterMatch[1]) - Number(beforeMatch[1]);
+  const xshiftDelta = afterShift - beforeShift;
   expect(Math.abs(xshiftDelta)).toBeLessThan(400);
   expect(xshiftDelta).toBeGreaterThan(0);
 });

@@ -1,4 +1,6 @@
 export const capabilityFixtures: Record<string, string> = {
+  project_array_grid: String.raw`\begin{tikzpicture}\matrix[matrix of nodes,nodes in empty cells,nodes={minimum width=24pt,minimum height=24pt},tikzbench array grid/.try] at (0,0) {x & y \\};\end{tikzpicture}`,
+  project_png: `\\begin{tikzpicture}\\node[inner sep=0pt,outer sep=0pt] at (0,0) {\\includegraphics[width=42pt,height=22pt]{assets/${"a".repeat(64)}.png}};\\end{tikzpicture}`,
   tex_packages: String.raw`\usepackage{stmaryrd,mathtools}\begin{tikzpicture}\node {$\llbracket x\rrbracket$};\end{tikzpicture}`,
   double_brackets: String.raw`\begin{tikzpicture}\node {$\left\llbracket\frac{1}{2}\right\rrbracket$};\end{tikzpicture}`,
   advanced_forest: String.raw`\begin{forest}[A [B]]\end{forest}`,

@@ -29,6 +29,10 @@ import { computeTrigger } from "./compute-trigger";
 import { buildRepeatPreviewScene } from "./repeat-preview";
 import { useSettingsStore } from "../settings/useSettingsStore";
 import { getActiveEditorPlatform } from "../platform/current";
+import { ProjectCompilationContext, ProjectIdContext } from "./project-png-images";
+import { ProjectPngProperties } from "./ProjectPngProperties";
+import { ProjectShapeProperties } from "./ProjectShapeProperties";
+import { ProjectAssetPanel, PROJECT_ASSET_DRAG_TYPE, type ProjectAsset } from "./ProjectAssetPanel";
 import css from "./App.module.css";
 import "./variables.css";
 import { TabStrip } from "./TabStrip";
@@ -226,10 +230,15 @@ export type AppProps = {
     onRename: () => void;
     onSourceChange: (source: string) => void;
     onSaveShortcut: () => void;
+    onShowTexProof: () => void;
+    compileSource: (source: string) => string;
+    assets: readonly ProjectAsset[];
+    onUploadAsset: (file: File) => Promise<ProjectAsset>;
     onDownloadTex: () => void;
-    onDownloadPdf: () => void;
   };
 };
+
+function identitySource(source: string): string { return source; }
 
 export function App({ project }: AppProps = {}) {
   const uiLanguage = useUiLocalization();
@@ -292,8 +301,11 @@ export function App({ project }: AppProps = {}) {
   const platform = getActiveEditorPlatform();
   const menuTarget = menuTargetFromPlatformId(platform.id);
   const menuDefinition = useMemo(
-    () => localizeAppMenuDefinition(filterAppMenuDefinitionForTarget(APP_MENU_DEFINITION, menuTarget), uiLanguage),
-    [menuTarget, uiLanguage]
+    () => {
+      const sections = filterAppMenuDefinitionForTarget(APP_MENU_DEFINITION, menuTarget);
+      return localizeAppMenuDefinition(project ? sections.filter((section) => section.id !== "file") : sections, uiLanguage);
+    },
+    [menuTarget, project, uiLanguage]
   );
   const [showOpenExampleModal, setShowOpenExampleModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -325,6 +337,7 @@ export function App({ project }: AppProps = {}) {
   const [pendingAutoFit, setPendingAutoFit] = useState(false);
   const [pendingClose, setPendingClose] = useState<{ intent: CloseIntent; dirtyDocumentIds: string[] } | null>(null);
   const [pendingFileConflict, setPendingFileConflict] = useState<PendingFileConflict | null>(null);
+  const [projectCopyStatus, setProjectCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const requestCloseIntentRef = useRef<(intent: CloseIntent) => void>(() => {});
   const computeSchedulerRef = useRef<ReturnType<typeof createSingleFlightScheduler<ComputeRequest, ComputeResponse>> | null>(null);
   const dragRenderViewBoxRef = useRef<ComputeRequest["renderViewBox"]>(null);
@@ -1652,12 +1665,14 @@ export function App({ project }: AppProps = {}) {
       }
 
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === "n") {
-        runtime.runCommand(APP_MENU_COMMAND_IDS.NEW_DOCUMENT, "shortcut");
+        if (project) project.onBack();
+        else runtime.runCommand(APP_MENU_COMMAND_IDS.NEW_DOCUMENT, "shortcut");
         e.preventDefault();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === "w") {
-        runtime.runCommand(APP_MENU_COMMAND_IDS.CLOSE_DOCUMENT, "shortcut");
+        if (project) project.onBack();
+        else runtime.runCommand(APP_MENU_COMMAND_IDS.CLOSE_DOCUMENT, "shortcut");
         e.preventDefault();
         return;
       }
@@ -1668,7 +1683,8 @@ export function App({ project }: AppProps = {}) {
         return;
       }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === "o") {
-        runtime.runCommand(APP_MENU_COMMAND_IDS.OPEN_DOCUMENT, "shortcut");
+        if (project) project.onBack();
+        else runtime.runCommand(APP_MENU_COMMAND_IDS.OPEN_DOCUMENT, "shortcut");
         e.preventDefault();
         return;
       }
@@ -1955,7 +1971,50 @@ export function App({ project }: AppProps = {}) {
     return name.endsWith(".tex") || name.endsWith(".tikz") || name.endsWith(".svg") || name.endsWith(".ipe");
   }
 
+  const pngInput = useRef<HTMLInputElement>(null);
+  const [assetStatus, setAssetStatus] = useState("");
+  const [showAssets, setShowAssets] = useState(false);
+  function isProjectAsset(file: File): boolean {
+    return file.type === "image/png" || file.type === "application/pdf" || /\.(?:png|pdf)$/iu.test(file.name);
+  }
+  function placeAsset(asset: ProjectAsset, client?: { x: number; y: number }) {
+    const state = useEditorStore.getState();
+    const view = state.snapshot.svg?.viewBox;
+    const surface = document.querySelector<SVGSVGElement>('[data-testid="canvas-interaction-layer"]');
+    const matrix = surface?.getScreenCTM();
+    const local = client && matrix ? new DOMPoint(client.x, client.y).matrixTransform(matrix.inverse()) : null;
+    const at = local && view ? worldPoint(pt(local.x), pt(2 * view.y + view.height - local.y))
+      : view ? worldPoint(pt(view.x + view.width / 2), pt(view.y + view.height / 2)) : worldPoint(pt(0), pt(0));
+    const longest = Math.max(asset.width, asset.height);
+    const scale = Math.min(240, Math.max(48, longest * 0.75)) / longest;
+    state.dispatch({ type: "APPLY_EDIT_ACTION", action: { kind: "addElement", template: { kind: "projectPng", key: asset.key, width: asset.width * scale, height: asset.height * scale }, at } });
+  }
+  async function importAssets(files: File[], placement?: { x: number; y: number } | "center") {
+    if (!project || !files.length) return;
+    const documentId = useEditorStore.getState().activeDocumentId;
+    setShowAssets(true);
+    setAssetStatus("正在导入素材…");
+    const errors: string[] = [];
+    for (const [index, file] of files.entries()) {
+      if (!isProjectAsset(file)) { errors.push(`${file.name}：请选择 PNG 或 PDF。`); continue; }
+      try {
+        const asset = await project.onUploadAsset(file);
+        if (placement && index === 0 && useEditorStore.getState().activeDocumentId === documentId) placeAsset(asset, placement === "center" ? undefined : placement);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `${file.name} 导入失败。`);
+      }
+    }
+    setAssetStatus(errors.join(" "));
+  }
+
   function onAppDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (project && e.dataTransfer.types.includes(PROJECT_ASSET_DRAG_TYPE)) {
+      if (e.target instanceof Element && e.target.closest('[data-testid="canvas-viewport"], [data-testid="advanced-canvas"]')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }
+      return;
+    }
     if (!dataTransferHasFilePayload(e.dataTransfer)) {
       return;
     }
@@ -1976,6 +2035,20 @@ export function App({ project }: AppProps = {}) {
 
   async function onAppDrop(e: React.DragEvent<HTMLDivElement>) {
     setIsDragOver(false);
+    const onCanvas = e.target instanceof Element && !!e.target.closest('[data-testid="canvas-viewport"], [data-testid="advanced-canvas"]');
+    const key = project ? e.dataTransfer.getData(PROJECT_ASSET_DRAG_TYPE) : "";
+    if (project && key) {
+      e.preventDefault();
+      const asset = project.assets.find((item) => item.key === key);
+      if (asset && onCanvas) placeAsset(asset, { x: e.clientX, y: e.clientY });
+      return;
+    }
+    const imageFiles = project ? Array.from(e.dataTransfer.files).filter(isProjectAsset) : [];
+    if (imageFiles.length) {
+      e.preventDefault();
+      await importAssets(imageFiles, onCanvas ? { x: e.clientX, y: e.clientY } : undefined);
+      return;
+    }
     const file = Array.from(e.dataTransfer.files).find(isDroppableFile);
     if (!file) {
       return;
@@ -1992,16 +2065,24 @@ export function App({ project }: AppProps = {}) {
   }
 
   return (
-    <div
+    <ProjectIdContext.Provider value={project?.id ?? null}><ProjectCompilationContext.Provider value={project?.compileSource ?? identitySource}><div
       className={css.app}
       style={appStyle}
       onDragOver={onAppDragOver}
       onDragLeave={onAppDragLeave}
       onDrop={(e) => { void onAppDrop(e); }}
+      onPasteCapture={(event) => {
+        if (!project || (event.target instanceof Element && event.target.closest("input,textarea,[contenteditable=true]"))) return;
+        const files = Array.from(event.clipboardData.files).filter(isProjectAsset);
+        if (files.length) { event.preventDefault(); event.stopPropagation(); void importAssets(files, "center"); }
+      }}
     >
       {project ? (
         <div className={css.projectBar}>
-          <button type="button" className={css.projectBack} onClick={project.onBack}>← Projects</button>
+          <span className={css.brandMark} aria-hidden="true">X</span>
+          <span className={css.brandName}>TIKZ BENCH</span>
+          <span className={css.projectDivider} aria-hidden="true" />
+          <button type="button" className={css.projectBack} onClick={project.onBack} aria-label="← Projects">← <span>Projects</span></button>
           <button type="button" className={css.projectName} onClick={project.onRename} title="Rename project">
             {project.name}
           </button>
@@ -2009,10 +2090,29 @@ export function App({ project }: AppProps = {}) {
             {project.saveStatus === "saved" ? "Saved" : project.saveStatus === "saving" ? "Saving…" : project.saveStatus === "conflict" ? "Version conflict" : "Save failed"}
           </span>
           <span className={css.projectBarSpacer} />
-          <button type="button" className={css.projectExport} onClick={project.onDownloadTex}>Download TeX</button>
-          <button type="button" className={css.projectExportPrimary} onClick={project.onDownloadPdf}>Download PDF</button>
+          <button type="button" className={css.projectSettings} onClick={handleOpenSettingsCommand} aria-label="工作台设置" title="工作台设置">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" fill="var(--bg-pane)" /><circle cx="15" cy="12" r="2" fill="var(--bg-pane)" /><circle cx="9" cy="18" r="2" fill="var(--bg-pane)" /></svg>
+          </button>
+          <button type="button" className={css.projectProof} onClick={project.onShowTexProof}>TeX 校样</button>
+          <button type="button" className={css.projectExport} aria-expanded={showAssets} aria-controls={showAssets ? "project-assets" : undefined} onClick={() => { setShowAssets(!showAssets); }}>素材</button>
+          <input hidden ref={pngInput} type="file" multiple accept="image/png,application/pdf,.png,.pdf" aria-label="选择素材" onChange={(event) => {
+            const files = Array.from(event.currentTarget.files ?? []);
+            event.currentTarget.value = "";
+            void importAssets(files);
+          }} />
+          <button type="button" className={css.projectExport} onClick={() => {
+            void navigator.clipboard.writeText(source).then(() => {
+              setProjectCopyStatus("copied");
+              window.setTimeout(() => { setProjectCopyStatus("idle"); }, 2200);
+            }).catch(() => { setProjectCopyStatus("error"); });
+          }}>{projectCopyStatus === "copied" ? "Copied" : projectCopyStatus === "error" ? "Copy failed" : "Copy TikZ"}</button>
+          <button type="button" className={css.projectExportPrimary} onClick={project.onDownloadTex}>导出 LaTeX 工程</button>
         </div>
       ) : null}
+      {project && showAssets ? <ProjectAssetPanel assets={project.assets} projectId={project.id} onChoose={() => pngInput.current?.click()}
+        onPlace={placeAsset} onImport={(files) => { void importAssets(files); }} /> : null}
+      {assetStatus ? <div className={css.compileNotice} role="status">{assetStatus}</div> : null}
+      {project ? <><ProjectPngProperties /><ProjectShapeProperties /></> : null}
       {platform.menu?.usesNativeMenuBar ? null : (
         <AppMenuBar
           definition={menuDefinition}
@@ -2024,6 +2124,7 @@ export function App({ project }: AppProps = {}) {
         <button type="button" onClick={handleShowCompiledPictureCommand}>LaTeX 编译预览</button>
       </div> : null}
       <Toolbar
+        projectMode={project !== undefined}
         updateChip={
           availableUpdate && !showUpdateModal && !updateDismissedForSession
             ? {
@@ -2036,16 +2137,16 @@ export function App({ project }: AppProps = {}) {
             : null
         }
       />
-      <TabStrip
+      {project ? null : <TabStrip
         singleProject={project !== undefined}
         onRequestCloseDocument={(documentId) => {
           requestCloseIntent({ kind: "close-document", documentId });
         }}
-      />
+      />}
       <div className={css.body}>
         <DockLayout repeatPreviewModel={repeatPreviewModel} />
       </div>
-      <StatusBar />
+      <StatusBar projectMode={project !== undefined} />
       <Suspense fallback={null}>
         <DevPanel />
       </Suspense>
@@ -2251,7 +2352,7 @@ export function App({ project }: AppProps = {}) {
       {isDragOver ? (
         <div className={css.dropOverlay}>Drop to open</div>
       ) : null}
-    </div>
+    </div></ProjectCompilationContext.Provider></ProjectIdContext.Provider>
   );
 }
 

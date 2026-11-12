@@ -171,6 +171,20 @@ export const capabilityMatrix: CapabilityMatrix = {
     edit: "partial",
     fixtures: ["cycle_polygon"]
   },
+  project_png: {
+    parser: "stable",
+    semantic: "partial",
+    svg: "partial",
+    edit: "partial",
+    fixtures: ["project_png"]
+  },
+  project_array_grid: {
+    parser: "stable",
+    semantic: "partial",
+    svg: "partial",
+    edit: "partial",
+    fixtures: ["project_array_grid"]
+  },
   shape_rectangle: {
     parser: "stable",
     semantic: "stable",

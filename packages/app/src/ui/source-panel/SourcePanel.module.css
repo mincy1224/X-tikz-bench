@@ -14,7 +14,7 @@
 .header {
   display: flex;
   align-items: center;
-  padding: 2px 6px;
+  padding: 0 14px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
   font-size: calc(var(--app-ui-scale, 1) * 10px);
@@ -22,7 +22,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
-  height: 20px;
+  height: 34px;
   flex-shrink: 0;
 }
 
@@ -71,10 +71,14 @@
   min-width: 0;
   overflow: auto;
   font-family: var(--font-mono);
-  line-height: 1.5;
+  line-height: 1.6;
   -webkit-user-select: none;
   user-select: none;
 }
+
+.editorWrap :global(.cm-content) { padding: 16px 0; }
+.editorWrap :global(.cm-gutters) { padding: 16px 0; background: var(--bg-header); border-right: 1px solid var(--border-lighter); color: var(--text-dim); }
+.editorWrap :global(.cm-activeLine), .editorWrap :global(.cm-activeLineGutter) { background: color-mix(in srgb, var(--accent) 7%, var(--bg-pane)); }
 
 .editorWrap :global(.cm-content),
 .editorWrap :global(.cm-content *) {

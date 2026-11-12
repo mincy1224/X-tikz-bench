@@ -731,8 +731,8 @@ export function createBrowserPlatformAdapter(env: BrowserPlatformEnvironment = {
         }
         return payload.svg;
       },
-      compileEditable: async (source, sourceVersion) => {
-        const response = await fetch("/api/latex/compile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source, sourceVersion, engine: "auto" }), signal: AbortSignal.timeout(25_000) });
+      compileEditable: async (source, sourceVersion, options) => {
+        const response = await fetch("/api/latex/compile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source, sourceVersion, engine: options?.engine ?? "auto", projectId: options?.projectId }), signal: AbortSignal.timeout(25_000) });
         const payload = await response.json() as { svg: string; sourceVersion: string; markers: { key: string; anchor: string; x: number; y: number }[]; error?: string; log?: string };
         lastLatexCompileLog = payload.log ?? payload.error ?? "";
         if (!response.ok || typeof payload.svg !== "string" || payload.sourceVersion !== sourceVersion || !Array.isArray(payload.markers)) throw new Error(payload.error ?? "编译结果版本或对象映射无效。");

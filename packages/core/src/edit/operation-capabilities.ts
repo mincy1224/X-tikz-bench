@@ -7,7 +7,7 @@ import { FIT_DIRECT_MANIPULATION_BLOCK_REASON } from "./fit.js";
 export type OperationCapability = { available: boolean; reason?: string };
 const allowed: OperationCapability = { available: true };
 const denied = (reason: string): OperationCapability => ({ available: false, reason });
-type CapabilityGeometry = Pick<EvaluateTikzResult, "editHandles" | "placements">;
+type CapabilityGeometry = Pick<EvaluateTikzResult, "editHandles" | "placements" | "scene">;
 export type OperationCapabilities = {
   move: (id: string, following?: ReadonlySet<string>) => OperationCapability;
   resize: (id: string) => OperationCapability;
@@ -20,10 +20,12 @@ export function createOperationCapabilities(body: readonly Statement[], semantic
   const prior = cache.get(semantic);
   if (prior?.body === body) return prior.capabilities;
   const statements = new Map<string, Statement>(), handles = new Map<string, EditHandle[]>();
+  const lockedPngs = new Set(semantic.scene.elements.flatMap((element) => element.kind === "Path" && element.projectPng?.locked ? [element.sourceRef.sourceId] : []));
   const visit = (items: readonly Statement[]) => { for (const item of items) { statements.set(item.id, item); if (item.kind === "Scope") visit(item.body); } };
   visit(body);
   for (const handle of semantic.editHandles) { const own = handles.get(handle.sourceRef.sourceId) ?? []; own.push(handle); handles.set(handle.sourceRef.sourceId, own); }
   const geometryConstraint = (id: string): OperationCapability => {
+    if (lockedPngs.has(id)) return denied("请先解锁 PNG。");
     if (id.includes(":matrix-cell:")) return denied("单元格尺寸与位置由矩阵布局控制，请调整整个矩阵。");
     const item = statements.get(id), frame = semantic.placements.get(id)?.parentFrame;
     if (frame && Math.abs(frame.a * frame.d - frame.b * frame.c) < 1e-12) return denied("父级变换不可逆，无法安全编辑几何。");
@@ -39,6 +41,7 @@ export function createOperationCapabilities(body: readonly Statement[], semantic
       return item?.kind === "Path" && item.items.some((part) => part.kind === "Node" && resolveMatrixMode(part.options).enabled) ? denied("矩阵布局暂不支持独立旋转；可以旋转父组合。") : allowed;
     },
     move(id: string, following: ReadonlySet<string> = new Set<string>()): OperationCapability {
+      if (lockedPngs.has(id)) return denied("请先解锁 PNG。");
       if (id.includes(":matrix-cell:")) return denied("单元格位置由矩阵布局控制，请移动整个矩阵。");
       const item = statements.get(id), frame = semantic.placements.get(id)?.parentFrame;
       if (frame && Math.abs(frame.a * frame.d - frame.b * frame.c) < 1e-12) return denied("父级变换不可逆，无法安全移动。");

@@ -54,6 +54,7 @@ import {
 import { parseTikzForEdit, type EditParseOptions } from "../parse-options.js";
 import { FIT_DIRECT_MANIPULATION_BLOCK_REASON, propertyTargetUsesFit, sourceUsesFitNodeFromParseResult } from "../fit.js";
 import { findPathStatementById } from "../statement-find.js";
+import { isProjectPngLocked, parseProjectPng, projectPngText } from "../project-png.js";
 
 const RESIZE_EPSILON = 1e-3;
 
@@ -208,6 +209,24 @@ export function applyResizeElementAction(
   const affectsHeight = action.role.includes("top") || action.role.includes("bottom");
   if (!affectsWidth && !affectsHeight) {
     return { kind: "unsupported", reason: `Unsupported resize role: ${action.role}` };
+  }
+  const pngStatement = findPathStatementById(parsed.figure.body, elementId);
+  const pngNode = pngStatement?.items.find((item): item is NodeItem => item.kind === "Node" && Boolean(parseProjectPng(item.text)));
+  const png = pngNode ? parseProjectPng(pngNode.text) : null;
+  if (png && pngNode) {
+    if (isProjectPngLocked(pngNode.options) || isProjectPngLocked(pngStatement?.options)) return { kind: "unsupported", reason: "请先解锁 PNG。" };
+    const delta = wp(action.newWorld.x - center.x, action.newWorld.y - center.y);
+    const local = nodeLinearTransform ? worldVectorToLocal(delta, nodeLinearTransform) : delta;
+    let width = affectsWidth ? 2 * Math.abs(local.x) : png.width;
+    let height = affectsHeight ? 2 * Math.abs(local.y) : png.height;
+    if (affectsWidth && affectsHeight) {
+      const scale = Math.max(width / png.width, height / png.height);
+      width = png.width * scale;
+      height = png.height * scale;
+    }
+    const replacement = projectPngText({ ...png, width: Math.min(16000, Math.max(0.1, width)), height: Math.min(16000, Math.max(0.1, height)) });
+    const updated = applyTextReplacements(source, [{ span: pngNode.textSpan, text: replacement }]);
+    return { kind: "success", newSource: updated.source, patches: updated.patches, changedSourceIds: [elementId] };
   }
   const widthResizeStrategy = resolveNodeWidthResizeStrategy(resizeTarget, affectsWidth);
 

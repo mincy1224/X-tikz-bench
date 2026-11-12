@@ -1,5 +1,5 @@
 import type { SessionSnapshot } from "../compute";
-import type { EditAction, EditActionResult } from "tikz-editor/edit/actions";
+import type { EditAction, EditActionResult, MatrixInsertPreset } from "tikz-editor/edit/actions";
 import type { SourcePatch } from "tikz-editor/edit/types";
 import type { NodeShapePresetId } from "tikz-editor/edit/inspector";
 import type {
@@ -25,6 +25,7 @@ export type ToolMode =
   | "addCircle"
   | "addArrow"
   | "addBezier";
+export type AddShapePreset = Exclude<NodeShapePresetId, "custom"> | "square" | "round-corner rectangle";
 export type CanvasDragKind = "element" | "resize" | "rotate" | "handle" | "pan" | "marquee" | "tool-create";
 export type CanvasAid = "grid" | "rulers" | "guides" | "transparencyGrid" | "documentBounds";
 export type SnapMode = "grid" | "guides" | "points" | "gaps";
@@ -186,7 +187,8 @@ export type WorkspaceEphemeralState = {
   showDocumentBounds: boolean;
   freehandSmoothingPx: number;
   bucketFillColor: string;
-  selectedAddShape: Exclude<NodeShapePresetId, "custom">;
+  selectedAddShape: AddShapePreset;
+  selectedAddMatrixStyle: MatrixInsertPreset;
   selectedAddMatrixRows: number;
   selectedAddMatrixColumns: number;
   creationStrokeColor: string;
@@ -274,7 +276,8 @@ export type EditorState = {
   showDocumentBounds: boolean;
   freehandSmoothingPx: number;
   bucketFillColor: string;
-  selectedAddShape: Exclude<NodeShapePresetId, "custom">;
+  selectedAddShape: AddShapePreset;
+  selectedAddMatrixStyle: MatrixInsertPreset;
   selectedAddMatrixRows: number;
   selectedAddMatrixColumns: number;
   creationStrokeColor: string;
@@ -407,8 +410,8 @@ export type EditorAction =
   | { type: "SET_ACTIVE_CANVAS_TEXT_EDIT"; sourceId: string | null }
   | { type: "SET_FREEHAND_SMOOTHING"; value: number }
   | { type: "SET_BUCKET_FILL_COLOR"; value: string }
-  | { type: "SET_ADD_SHAPE_PRESET"; value: Exclude<NodeShapePresetId, "custom"> }
-  | { type: "SET_ADD_MATRIX_PRESET"; rows: number; columns: number }
+  | { type: "SET_ADD_SHAPE_PRESET"; value: AddShapePreset }
+  | { type: "SET_ADD_MATRIX_PRESET"; rows: number; columns: number; style?: MatrixInsertPreset }
   | { type: "SET_CREATION_STROKE_COLOR"; value: string }
   | { type: "SET_CREATION_FILL_COLOR"; value: string }
   | { type: "SET_ACTIVE_SOURCE_SCRUB"; sourceId: string | null }

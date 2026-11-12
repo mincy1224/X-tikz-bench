@@ -1,0 +1,24 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.toolbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar button {
+  flex-shrink: 0;
+  cursor: pointer;
+  background: var(--bg-pane);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.toolbar button:hover { background: var(--btn-hover-bg); border-color: var(--accent); }
+.toolbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .toolbar button { transition: none; } }

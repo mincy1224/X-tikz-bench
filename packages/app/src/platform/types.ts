@@ -326,6 +326,6 @@ export type PlatformLatex = {
   compileText?: (batch: TexTextBatch) => Promise<TexTextResponse>;
   checkAvailable: () => Promise<{ available: boolean; details: string }>;
   compileTikzToSvg: (latexDocument: string) => Promise<string>;
-  compileEditable?: (source: string, sourceVersion: string) => Promise<{ svg: string; sourceVersion: string; markers: { key: string; anchor: string; x: number; y: number }[] }>;
+  compileEditable?: (source: string, sourceVersion: string, options?: { engine?: "auto" | "xelatex"; projectId?: string }) => Promise<{ svg: string; sourceVersion: string; markers: { key: string; anchor: string; x: number; y: number }[] }>;
   readLastCompileLog?: () => Promise<string>;
 };

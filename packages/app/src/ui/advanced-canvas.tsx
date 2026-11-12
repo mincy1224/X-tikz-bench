@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { instrumentAdvancedDocument } from "tikz-editor/edit/advanced-instrumentation";
 import { advancedObject, advancedOptionValues, parseAdvancedObjects, moveCircuitObject, setAdvancedOption } from "tikz-editor/edit/advanced-objects";
@@ -13,6 +13,7 @@ import { useEditorStore } from "../store/store";
 import { SourceEditTransaction } from "../store/source-edit-transaction";
 import { paintObject, useFormatPainter } from "./format-painter";
 import { sanitizeSvgMarkup } from "./svg-sanitize";
+import { ProjectCompilationContext, ProjectIdContext } from "./project-png-images";
 import css from "./advanced-canvas.module.css";
 
 type Point = { x: number; y: number };
@@ -20,6 +21,8 @@ export type CompiledGeometry = { id: string; bounds: { x: number; y: number; wid
 export const useCompiledGeometry = create<{ source: string; objects: CompiledGeometry[]; set: (source: string, objects: CompiledGeometry[]) => void }>((set) => ({ source: "", objects: [], set: (source, objects) => { set({ source, objects }); } }));
 
 export function AdvancedCanvas() {
+  const projectId = useContext(ProjectIdContext);
+  const compileSource = useContext(ProjectCompilationContext);
   const source = useEditorStore((state) => state.source);
   const documentId = useEditorStore((state) => state.activeDocumentId);
   const activeFigureId = useEditorStore((state) => state.activeFigureId);
@@ -46,7 +49,8 @@ export function AdvancedCanvas() {
         try {
           const compilation = instrumentAdvancedDocument(request.source, request.figureId); const latex = getActiveEditorPlatform().latex;
           if (!latex) throw new Error("此平台没有本地 TeX 编译服务。");
-          const compiled = latex.compileEditable ? await latex.compileEditable(compilation.source, compilation.sourceVersion) : { svg: await latex.compileTikzToSvg(compilation.source) };
+          const document = compileSource(compilation.source);
+          const compiled = latex.compileEditable ? await latex.compileEditable(document, compilation.sourceVersion, { projectId: projectId ?? undefined }) : { svg: await latex.compileTikzToSvg(document) };
           const current = useEditorStore.getState();
           if (alive.current && current.activeDocumentId === request.documentId && current.activeFigureId === request.figureId && current.source === request.source) {
             setResult({ source: request.source, figureId: request.figureId, svg: sanitizeSvgMarkup(compiled.svg), bindings: compilation.bindings }); setError("");
@@ -54,7 +58,7 @@ export function AdvancedCanvas() {
         } catch (error_) { const current = useEditorStore.getState(); if (alive.current && current.activeDocumentId === request.documentId && current.activeFigureId === request.figureId && current.source === request.source) setError(error_ instanceof Error ? error_.message : String(error_)); }
       }
     } finally { running.current = false; if (alive.current) setBusy(false); }
-  }, []);
+  }, [compileSource, projectId]);
   useEffect(() => {
     alive.current = true;
     return () => { alive.current = false; latest.current = null; drag.current?.transaction.finish(true); if (drag.current?.frame != null) cancelAnimationFrame(drag.current.frame); resizeDrag.current?.transaction.finish(true); if (resizeDrag.current?.frame != null) cancelAnimationFrame(resizeDrag.current.frame); objectDrag.current?.transaction.finish(true); if (objectDrag.current?.frame != null) cancelAnimationFrame(objectDrag.current.frame); useCompiledGeometry.getState().set("", []); };
@@ -188,7 +192,7 @@ export function AdvancedCanvas() {
   };
   const mappedCurrent = result?.source === source && result.figureId === activeFigureId;
   const editable = mappedCurrent || drag.current !== null || objectDrag.current !== null || resizeDrag.current !== null;
-  return <section className={css.canvas} data-canvas-viewport="true" tabIndex={0} onKeyDown={(event) => {
+  return <section className={css.canvas} data-canvas-viewport="true" data-testid="advanced-canvas" tabIndex={0} onKeyDown={(event) => {
     if (event.key === "Escape") { finishPoint(true); finishObject(true); finishResize(true); event.preventDefault(); }
   }}>
     <div className={css.status} role="status">{busy ? "正在更新 TeX 图形…" : error ? "编译失败，已保留上次画面" : "主画布 · TeX"}<button type="button" onClick={() => { setRetry((value) => value + 1); }}>重新编译</button></div>

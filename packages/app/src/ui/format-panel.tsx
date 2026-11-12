@@ -7,6 +7,7 @@ import { getEditableNodeParts, nodePartProperty, updateNodePart, updateNodePartF
 import { getInspectorDescriptor } from "tikz-editor/edit/inspector";
 import { buildArrowTipSetPropertyMutation } from "tikz-editor/edit/property-write-builders";
 import { useEditorStore } from "../store/store";
+import { getSharedEditAnalysisView, getSharedEditAnalysisSession } from "../edit-analysis-manager";
 import { SourceEditTransaction } from "../store/source-edit-transaction";
 import { SidePanel } from "./SidePanel";
 import { Field, ColorField } from "./inspector-panel/FormatFields";
@@ -22,23 +23,34 @@ function Section({ title, children, advanced = false }: { title: string; childre
 
 export function FormatPanel() {
   const inspection = useRef(useEditorStore.getState());
-  // Dragging does not change formatting. Keep the inspector's committed view
-  // while the canvas previews, rather than rebuilding every field each frame.
+  // Keep committed properties during a gesture and while the new scene is
+  // computing. Rebuilding against an old scene both wastes work and flashes
+  // stale dimensions immediately after release.
   const state = useEditorStore(useCallback((next) => {
-    if (next.activeCanvasDragKind !== "element" || next.activeDocumentId !== inspection.current.activeDocumentId) inspection.current = next;
+    const contextChanged = next.activeDocumentId !== inspection.current.activeDocumentId || next.activeFigureId !== inspection.current.activeFigureId;
+    if (contextChanged || next.activeCanvasDragKind !== "element" && next.source === next.snapshot.source) inspection.current = next;
     return inspection.current;
   }, []));
   const resize = useResizePreference();
   const [alignToCanvas, setAlignToCanvas] = useState(false);
   const [tab, setTab] = useState<"shape" | "text">("shape"); const [error, setError] = useState("");
   const painterMessage = useFormatPainter((painter) => painter.message);
-  const selected = useMemo(() => editableObjects(state.source, state.snapshot.scene?.elements, state.selectedElementIds, state.snapshot.parseResult, { activeFigureId: state.activeFigureId }), [state.source, state.snapshot.scene?.elements, state.selectedElementIds, state.snapshot.parseResult, state.activeFigureId]);
+  const parseOptions = useMemo(() => ({
+    activeFigureId: state.activeFigureId,
+    analysisView: getSharedEditAnalysisView({ documentId: state.activeDocumentId, sourceRevision: state.sourceRevision, source: state.source, activeFigureId: state.activeFigureId, snapshot: state.snapshot }),
+    analysisSession: getSharedEditAnalysisSession(),
+    colorAliases: state.source === state.snapshot.source ? state.snapshot.semanticResult?.colorAliases : undefined
+  }), [state.activeDocumentId, state.activeFigureId, state.source, state.sourceRevision, state.snapshot]);
+  const selected = useMemo(() => editableObjects(state.source, state.snapshot.scene?.elements, state.selectedElementIds, state.snapshot.parseResult, parseOptions), [state.source, state.snapshot.scene?.elements, state.selectedElementIds, state.snapshot.parseResult, parseOptions]);
   const key = `${state.activeDocumentId}:${selected.map((object) => object.id).join(",")}`;
   const single = selected.length === 1 ? selected[0] : null;
   const setObjectProperty = (source: string, id: string, property: string, value: string) => writeObjectProperty(source, id, property, value, { activeFigureId: state.activeFigureId });
   const common = (property: string, fallback?: string): string | null => {
     const values = selected.map((object) => object.properties.get(property) ?? (fallback ? object.properties.get(fallback) : "") ?? "");
-    return values.every((value) => value === values[0] && value !== "__mixed__") ? values[0] ?? "" : null;
+    if (!values.every((value) => value === values[0] && value !== "__mixed__")) return null;
+    const value = values[0] ?? "";
+    // Resolved measurements are display values, not the original TeX expression.
+    return property.startsWith("resolved-") && /^-?\d+(?:\.\d+)?$/u.test(value) ? String(Number(Number(value).toPrecision(6))) : value;
   };
   const commit = (build: (source: string) => string, label: string) => {
     try { const transaction = new SourceEditTransaction(label); transaction.preview(build); transaction.finish(); setError(""); }
@@ -56,8 +68,8 @@ export function FormatPanel() {
     selection = result.selectedSourceIds;
     return result.newSource;
   }, "排列"); if (selection) state.dispatch({ type: "SELECT_RANGE", ids: selection }); };
-  const parts = useMemo(() => single ? getEditableNodeParts(state.source, single.id, { activeFigureId: state.activeFigureId }) : null, [state.source, single, state.activeFigureId]);
-  const descriptors = useMemo(() => selected.flatMap((object) => object.element ? [getInspectorDescriptor(object.element, { source: state.source, editHandles: state.snapshot.editHandles, parseOptions: { activeFigureId: state.activeFigureId } })] : []), [selected, state.source, state.snapshot.editHandles, state.activeFigureId]);
+  const parts = useMemo(() => single ? getEditableNodeParts(state.source, single.id, parseOptions) : null, [state.source, single, parseOptions]);
+  const descriptors = useMemo(() => selected.flatMap((object) => object.element ? [getInspectorDescriptor(object.element, { source: state.source, editHandles: state.snapshot.editHandles, parseOptions })] : []), [selected, state.source, state.snapshot.editHandles, parseOptions]);
   const allArrowFields = descriptors.flatMap((descriptor) => descriptor.sections.flatMap((section) => section.properties)).filter((property) => property.kind === "arrowTip");
   const arrowFields = allArrowFields.filter((field, index) => allArrowFields.findIndex((candidate) => candidate.side === field.side) === index);
   return <SidePanel><SidePanel.Header>设置格式{selected.length ? ` · ${selected.length > 1 ? `${selected.length} 个对象` : single?.label}` : ""}</SidePanel.Header>

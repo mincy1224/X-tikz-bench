@@ -37,6 +37,7 @@ export function applyMoveElementsAction(
   if (editHandles.some((handle) => elementIds.includes(handle.sourceRef.sourceId) && (handle.sourceRef.sourceFingerprint !== fingerprint || source.slice(handle.sourceRef.sourceSpan.from, handle.sourceRef.sourceSpan.to) !== handle.sourceText))) return { kind: "error", message: "Handle does not match current source (stale handle)." };
   const ids = elementIds.map((id) => id.trim()).filter(Boolean);
   if (!ids.length) return { kind: "unsupported", reason: "No element ids were provided." };
+  if (semantic.scene.elements.some((element) => element.kind === "Path" && element.projectPng?.locked && ids.includes(element.sourceRef.sourceId))) return { kind: "unsupported", reason: "请先解锁 PNG。" };
   if (ids.some((id) => sourceUsesFitNodeFromParseResult(source, parsed, id))) return { kind: "unsupported", reason: FIT_DIRECT_MANIPULATION_BLOCK_REASON };
   const handles = ids.flatMap((id) => {
     const supplied = editHandles.filter((handle) => handle.sourceRef.sourceId === id);

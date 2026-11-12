@@ -17,7 +17,7 @@ import {
   px
 } from "tikz-editor/coords/index";
 import { parseEditableTargetId } from "tikz-editor/edit/editable-targets";
-import { applyEditAction } from "tikz-editor/edit/actions";
+import { applyEditAction, ADORNMENT_EDIT_NOOP_REASON, PATH_ATTACHED_NODE_EDIT_NOOP_REASON, type EditAction } from "tikz-editor/edit/actions";
 import { parseTikz } from "tikz-editor/parser/index";
 import { evaluateTikzFigure } from "tikz-editor/semantic/index";
 import { useEditorStore } from "../../store/store";
@@ -28,6 +28,7 @@ import { parseLength } from "tikz-editor/semantic/coords/parse-length";
 import { intersectRayWithPolygon } from "tikz-editor/semantic/nodes/shape-geometry";
 import {
   snapHandlePosition,
+  snapResizePosition,
   snapSelectionTranslation,
   snapToolPointer,
   type SnapLine
@@ -59,7 +60,8 @@ import {
   resolveGridTooltipCounts,
   resolveToolCreateSize,
   snapPointDeltaToAxisStepMultiples,
-  resolveToolCreateCurrentWorld
+  resolveToolCreateCurrentWorld,
+  resolveFrameBasis
 } from "./interaction-helpers";
 import { resolveHandleDragAction } from "./handle-drag-actions";
 import { resolveEndpointAnchorSnap } from "./endpoint-anchor-snap";
@@ -170,6 +172,38 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
   }, [dragRef]);
 
   useEffect(() => {
+    function previewSpecializedElementAction(
+      drag: Extract<DragState, { kind: "element" }>,
+      action: Extract<EditAction, { kind: "moveAdornment" | "movePathAttachedNode" }>
+    ): void {
+      const transaction = drag.transaction;
+      if (!transaction) {
+        applyActionWithFeedback(action, drag.historyMergeKey);
+        return;
+      }
+      try {
+        const valid = transaction.previewEdit((base) => {
+          const result = applyEditAction(base, drag.baselineHandles ?? [], action, {
+            parseOptions: { activeFigureId: useEditorStore.getState().activeFigureId, propertyWriteMode: "drag-frame" }
+          });
+          if (result.kind === "unsupported" && (result.reason === ADORNMENT_EDIT_NOOP_REASON || result.reason === PATH_ATTACHED_NODE_EDIT_NOOP_REASON)) {
+            return { source: base, patches: [], changedSourceIds: drag.elementIds };
+          }
+          if (result.kind !== "success" && result.kind !== "partial") {
+            throw new Error(result.kind === "error" ? result.message : result.reason);
+          }
+          return { source: result.newSource, patches: result.patches, changedSourceIds: result.changedSourceIds ?? drag.elementIds };
+        });
+        if (!valid) throw new Error("源码已改变，位置编辑已取消。");
+      } catch (error) {
+        transaction.finish(true);
+        setDragState(null);
+        setPathAttachedNodePreview(null);
+        setSnapLines([]);
+        setWarning(error instanceof Error ? error.message : String(error));
+      }
+    }
+
     function sameIdsAsCurrentSelection(ids: readonly string[]): boolean {
       const currentSelection = selectedElementIdsRef.current;
       if (currentSelection.size !== ids.length) {
@@ -497,10 +531,26 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
 
       if (drag.kind === "resize") {
         setNodeAnchorOverlay(null);
-        setSnapLines([]);
-        maybeTriggerSnapFeedback(false);
-        const liveFrame = liveResizeFramesRef.current.get(drag.elementId) ?? null;
-        const dimensions = measureResize(drag, world, event.shiftKey, liveFrame);
+        const reference = resizeFrameWorldBounds(drag.initialFrame);
+        const basis = resolveFrameBasis(drag.initialFrame);
+        const x = drag.role.includes("left") ? "min" : drag.role.includes("right") ? "max" : undefined;
+        const y = drag.role.includes("bottom") ? "min" : drag.role.includes("top") ? "max" : undefined;
+        const axisAligned = basis.widthUnit.x > 0.9999 && basis.heightUnit.y > 0.9999;
+        const centerX = (reference.minX + reference.maxX) / 2, centerY = (reference.minY + reference.maxY) / 2;
+        const centered = drag.measurementMode === "center";
+        const minX = x === "min" ? world.x : x === "max" && centered ? 2 * centerX - world.x : reference.minX;
+        const minY = y === "min" ? world.y : y === "max" && centered ? 2 * centerY - world.y : reference.minY;
+        const maxX = x === "max" ? world.x : x === "min" && centered ? 2 * centerX - world.x : reference.maxX;
+        const maxY = y === "max" ? world.y : y === "min" && centered ? 2 * centerY - world.y : reference.maxY;
+        const snapped = drag.snapContext && axisAligned && maxX > minX && maxY > minY && !event.shiftKey && !drag.preserveAspectDuringResize && !useResizePreference.getState().whole
+          ? snapResizePosition({ context: drag.snapContext, point: world, bounds: worldBounds(pt(minX), pt(minY), pt(maxX), pt(maxY)), x, y, modifiers: { ctrlOrMeta: event.ctrlKey || event.metaKey } })
+          : null;
+        const nextWorld = snapped?.snappedPoint ?? world;
+        const lines = snapped?.lines ?? [];
+        setSnapLines(lines);
+        maybeTriggerSnapFeedback(lines.length > 0);
+        const liveFrame = snapped ? null : liveResizeFramesRef.current.get(drag.elementId) ?? null;
+        const dimensions = measureResize(drag, nextWorld, event.shiftKey, liveFrame);
         setDragTooltip({
           kind: "resize",
           anchor: clientPointFromEvent(event),
@@ -511,10 +561,11 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
           snapshotMatchesSource: snapshotSource === source,
           dragKind: "resize",
           rawPoint: world,
-          lines: []
+          snappedPoint: nextWorld,
+          lines
         });
 
-        try { previewResize(drag, world, event.shiftKey, useResizePreference.getState().whole, resizeFrameWorldBounds(drag.initialFrame), { activeFigureId: useEditorStore.getState().activeFigureId }, formatPrecision); }
+        try { previewResize(drag, nextWorld, event.shiftKey, useResizePreference.getState().whole, reference, { activeFigureId: useEditorStore.getState().activeFigureId }, formatPrecision); }
         catch (error) {
           setWarning(error instanceof Error ? error.message : String(error));
           if (!drag.transaction.valid()) { drag.transaction.finish(true); setDragState(null); }
@@ -604,7 +655,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
             }
             setSnapLines([]);
             maybeTriggerSnapFeedback(false);
-            applyActionWithFeedback(
+            previewSpecializedElementAction(drag,
               {
                 kind: "moveAdornment",
                 targetId: parsedTarget.id,
@@ -613,8 +664,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
                 angleRaw: placement.angleRaw,
                 distancePt: placement.distancePt,
                 formatPrecision
-              },
-              drag.historyMergeKey
+              }
             );
             return;
           }
@@ -746,7 +796,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
             if (pathAttachedNodeDrag.lastAppliedPlacementKey === placementKey) {
               return;
             }
-            applyActionWithFeedback(
+            previewSpecializedElementAction(drag,
               {
                 kind: "movePathAttachedNode",
                 nodeId: pathAttachedNodeDrag.nodeId,
@@ -756,8 +806,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
                 sideUpdate,
                 distanceUpdatePt,
                 formatPrecision
-              },
-              drag.historyMergeKey
+              }
             );
             pathAttachedNodeDrag.lastAppliedPlacementKey = placementKey;
             return;
@@ -1151,7 +1200,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
         }
       }
 
-      const cleanupElementIds = (drag.kind === "element" && drag.translation || drag.kind === "resize" || drag.kind === "rotate") ? [] : propertyCleanupElementIdsForDrag(drag);
+      const cleanupElementIds = (drag.kind === "element" && drag.transaction || drag.kind === "resize" || drag.kind === "rotate") ? [] : propertyCleanupElementIdsForDrag(drag);
       if ("historyMergeKey" in drag && typeof drag.historyMergeKey === "string" && cleanupElementIds.length > 0) {
         dispatch({
           type: "APPLY_EDIT_ACTION",
@@ -1226,7 +1275,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
     latestMoveHandler.current = processWorldPointerMove;
     function onWorldPointerMove(event: PointerEvent) {
       const active = dragRef.current;
-      if (active?.kind !== "resize" && active?.kind !== "rotate" && !(active?.kind === "element" && active.translation)) { processWorldPointerMove(event); return; }
+      if (active?.kind !== "resize" && active?.kind !== "rotate" && !(active?.kind === "element" && active.transaction)) { processWorldPointerMove(event); return; }
       pendingPointer.current = event;
       pointerFrame.current ??= requestAnimationFrame(() => {
         pointerFrame.current = null;

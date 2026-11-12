@@ -502,7 +502,7 @@ test("rectangle and grid creation show tooltips and keep tooltip in viewport bou
   await page.mouse.up();
 });
 
-test("line creation from empty source creates a tikzpicture environment", async ({ page }) => {
+test("line creation in a blank project writes only the TikZ body", async ({ page }) => {
   await gotoApp(page);
   await setSource(page, "");
 
@@ -511,11 +511,11 @@ test("line creation from empty source creates a tikzpicture environment", async 
   await dragBetweenPoints(page, layer, { x: 120, y: 120 }, { x: 280, y: 180 });
   await page.mouse.up();
 
-  await expect.poll(async () => readSource(page)).toContain("\\begin{tikzpicture}");
+  await expect.poll(async () => readSource(page)).toContain("\\draw");
   const source = await readSource(page);
   expect(source).toContain("\\draw");
-  expect(source).toContain("\\end{tikzpicture}");
-  expect(normalizeSourceWhitespace(source)).toMatch(/^\\begin\{tikzpicture\}\\draw.+\\end\{tikzpicture\}$/);
+  expect(source).not.toContain("tikzpicture");
+  expect(normalizeSourceWhitespace(source)).toMatch(/^\\draw.+;$/);
   await expect(page.getByTestId("canvas-warning-message")).toHaveCount(0);
   await expect.poll(async () => page.locator("[data-hit-region-target-id]").count()).toBeGreaterThanOrEqual(1);
   await expect(page.locator("[data-hit-region-target-id]").first()).toHaveAttribute("data-hit-region-target-id", "path:0");
@@ -1185,7 +1185,7 @@ test("multi-segment path tool finalizes on Enter", async ({ page }) => {
   await gotoApp(page);
   await setSource(page, String.raw`\begin{tikzpicture}
 \end{tikzpicture}`);
-  await toolbarButton(page, "Path").click();
+  await toolbarButton(page, "Polyline").click();
 
   const layer = interactionLayer(page);
   const box = await layer.boundingBox();
@@ -1206,7 +1206,7 @@ test("multi-segment path draft does not follow document tab switches", async ({ 
   await gotoApp(page);
   await setSource(page, String.raw`\begin{tikzpicture}
 \end{tikzpicture}`);
-  await toolbarButton(page, "Path").click();
+  await toolbarButton(page, "Polyline").click();
 
   const layer = interactionLayer(page);
   const box = await layer.boundingBox();
@@ -1221,14 +1221,14 @@ test("multi-segment path draft does not follow document tab switches", async ({ 
   await page.getByTestId("tab-new").click();
 
   await expect(page.getByTestId("canvas-tool-preview-complex-path")).toHaveCount(0);
-  await expect(toolbarButton(page, "Path")).toHaveClass(/btnActive/);
+  await expect(toolbarButton(page, "Polyline")).toHaveClass(/btnActive/);
 });
 
 test("Ctrl-Z undoes the latest path draft segment without leaving the tool", async ({ page }) => {
   await gotoApp(page);
   await setSource(page, String.raw`\begin{tikzpicture}
 \end{tikzpicture}`);
-  await toolbarButton(page, "Path").click();
+  await toolbarButton(page, "Polyline").click();
 
   const layer = interactionLayer(page);
   const box = await layer.boundingBox();
@@ -1242,14 +1242,14 @@ test("Ctrl-Z undoes the latest path draft segment without leaving the tool", asy
   await expect.poll(async () => (await readSource(page)).match(/\\draw/g)?.length ?? 0).toBe(1);
   const sourceBeforeDraft = await readSource(page);
 
-  await toolbarButton(page, "Path").click();
+  await toolbarButton(page, "Polyline").click();
   await page.mouse.click(box.x + 120, box.y + 160);
   await page.mouse.click(box.x + 200, box.y + 160);
   await page.mouse.click(box.x + 200, box.y + 220);
   await page.keyboard.press("ControlOrMeta+z");
 
   await expect.poll(async () => readSource(page)).toBe(sourceBeforeDraft);
-  await expect(toolbarButton(page, "Path")).toHaveClass(/btnActive/);
+  await expect(toolbarButton(page, "Polyline")).toHaveClass(/btnActive/);
   await page.keyboard.press("Enter");
 
   await expect.poll(async () => (await readSource(page)).match(/\\draw/g)?.length ?? 0).toBe(2);
@@ -1308,7 +1308,7 @@ test("Ctrl-Z cancels a pending Bezier without undoing document history", async (
   await setSource(page, String.raw`\begin{tikzpicture}
 \end{tikzpicture}`);
 
-  await toolbarButton(page, "Path").click();
+  await toolbarButton(page, "Polyline").click();
   const layer = interactionLayer(page);
   const box = await layer.boundingBox();
   if (!box) {
@@ -1367,7 +1367,7 @@ test("multi-segment path tool keeps named anchors when clicking anchor dots", as
   await setSource(page, String.raw`\begin{tikzpicture}
   \node[draw] (A) at (2,1) {A};
 \end{tikzpicture}`);
-  await toolbarButton(page, "Path").click();
+  await toolbarButton(page, "Polyline").click();
 
   const layer = interactionLayer(page);
   const box = await layer.boundingBox();

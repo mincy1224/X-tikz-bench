@@ -61,6 +61,7 @@ export type UseCanvasElementInteractionsArgs = {
   viewportWorldBounds: WorldBounds | null;
   setDragState: ValueSetter<DragState | null>;
   resolveEditableTextTarget: (targetId: string, region?: HitRegion) => EditableTextTarget | null;
+  openMatrixCellText: (id: string) => boolean;
   densePathSourceIds: ReadonlySet<string>;
   expandedDensePathSourceId: string | null;
   setExpandedDensePathSourceId: StateSetter<string | null>;
@@ -104,6 +105,7 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
     viewportWorldBounds,
     setDragState,
     resolveEditableTextTarget,
+    openMatrixCellText,
     densePathSourceIds,
     expandedDensePathSourceId,
     setExpandedDensePathSourceId,
@@ -203,8 +205,12 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
       const baseline = snapshot.parseResult ?? parseTikzForEdit(transaction.base, { activeFigureId });
       const baselineSemantic = snapshot.semanticResult ?? evaluateTikzFigure(baseline.figure, transaction.base);
       const baselineHandles = baselineSemantic.editHandles;
-      const translation = prepareTranslation(transaction.base, baselineHandles, draggedIds, { activeFigureId }, baselineSemantic, baseline);
-      if (!translation) { transaction.finish(true); setWarning("选区无法安全移动，未修改任何对象。"); return; }
+      const specializedPlacement = draggedIds.length === 1 && (
+        draggedIds[0].startsWith("node-adornment:") ||
+        baselineHandles.some((handle) => handle.sourceRef.sourceId === draggedIds[0] && handle.pathAttachmentContext != null)
+      );
+      const translation = specializedPlacement ? null : prepareTranslation(transaction.base, baselineHandles, draggedIds, { activeFigureId }, baselineSemantic, baseline);
+      if (!translation && !specializedPlacement) { transaction.finish(true); setWarning("选区无法安全移动，未修改任何对象。"); return; }
       setDragState({
         kind: "element",
         transaction,
@@ -651,7 +657,7 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
         dispatch({ type: "SELECT", id: cell.cellSourceId, additive: false });
         const textTarget = resolveEditableTextTarget(targetId, region);
         if (textTarget) beginCanvasTextInteraction({ ...event, detail: 2, button: 0, pointerId: 0, currentTarget: event.currentTarget } as unknown as ReactPointerEvent<SVGElement>, textTarget);
-        else { closeTextEditingSession(); viewportRef.current?.focus({ preventScroll: true }); }
+        else if (!openMatrixCellText(cell.cellSourceId)) { closeTextEditingSession(); viewportRef.current?.focus({ preventScroll: true }); }
         return;
       }
       const textTarget = resolveEditableTextTarget(targetId, region);
@@ -688,7 +694,7 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
       }
     },
     [
-      snapshot.scene, matrixEditing, documentId, beginCanvasTextInteraction,
+      snapshot.scene, matrixEditing, documentId, beginCanvasTextInteraction, openMatrixCellText,
       dispatch,
       densePathSourceIds,
       scopeOverlay,

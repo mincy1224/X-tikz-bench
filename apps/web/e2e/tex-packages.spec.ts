@@ -41,22 +41,13 @@ test("double brackets, extensions and export work offline with production CSP", 
   await expect.poll(() => readSource(page)).toBe(brackets); expect(compilations).toBe(0); expect(external).toEqual([]); expect(errors).toEqual([]);
 });
 
-test("package panel writes source once, cancels, checks and undoes", async ({ page }) => {
-  await page.route("**/api/latex/packages/check", (route) => route.fulfill({ json: { packages: [{ name: "mathtools", installed: true }] } }));
-  await gotoApp(page); const source = String.raw`\begin{tikzpicture}\node[draw] {A};\end{tikzpicture}`; await setSource(page, source);
-  await page.getByRole("button", { name: "宏包", exact: true }).click();
-  await page.getByRole("button", { name: "添加宏包", exact: true }).click();
-  await page.getByRole("textbox", { name: "宏包名称 1", exact: true }).fill("mathtools");
-  await page.getByRole("button", { name: "检查已安装宏包" }).click();
-  await expect(page.getByTestId("packages-dialog")).toContainText("mathtools：快速预览");
+test("built-in double brackets need no package declaration or package panel", async ({ page }) => {
+  await gotoApp(page);
+  const source = String.raw`\begin{tikzpicture}\node[draw] {$\llbracket x \rrbracket$};\end{tikzpicture}`;
+  await setSource(page, source);
+  await expect(page.getByTestId("canvas-svg-layer").locator('[data-c="27E6"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "宏包", exact: true })).toHaveCount(0);
   expect(await readSource(page)).toBe(source);
-  await page.getByTestId("packages-dialog").getByRole("button", { name: "取消", exact: true }).click(); expect(await readSource(page)).toBe(source);
-  await page.getByRole("button", { name: "宏包", exact: true }).click(); await page.getByRole("button", { name: "添加宏包", exact: true }).click();
-  await page.getByRole("textbox", { name: "宏包名称 1", exact: true }).fill("mathtools"); await page.getByRole("button", { name: "应用宏包" }).click();
-  await expect.poll(() => readSource(page)).toBe("\\usepackage{mathtools}\n" + source);
-  await openMenuCommand(page, "edit", "edit.undo"); await expect.poll(() => readSource(page)).toBe(source);
-  await setSource(page, "\\usepackage{stmaryrd}\n" + source); await page.getByRole("button", { name: "宏包", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "宏包名称 1", exact: true })).toHaveValue("stmaryrd");
 });
 
 test("local TeX boxes are cached during movement; failure retains the drawing and retries", async ({ page }) => {

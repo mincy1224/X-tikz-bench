@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { RiPaintBrushLine } from "@remixicon/react";
 import { create } from "zustand";
 import { applyFormat, captureFormat, editableObjects, type FormatSnapshot } from "tikz-editor/edit/editable-objects";
 import { useEditorStore } from "../store/store";
@@ -22,22 +23,24 @@ export function paintObject(id: string): boolean {
   return true;
 }
 
-export function FormatPainterButton() {
-  const state = useEditorStore();
+export function FormatPainterButton({ className }: { className?: string }) {
+  const documentId = useEditorStore((state) => state.activeDocumentId);
+  const selectedElementIds = useEditorStore((state) => state.selectedElementIds);
   const painter = useFormatPainter();
   useEffect(() => {
-    if (painter.documentId && painter.documentId !== state.activeDocumentId) painter.set(null, null);
-  }, [painter, state.activeDocumentId]);
-  const selected = [...state.selectedElementIds];
+    if (painter.documentId && painter.documentId !== documentId) painter.set(null, null);
+  }, [painter, documentId]);
+  const selected = [...selectedElementIds];
   return <button type="button" aria-label="格式刷" aria-pressed={Boolean(painter.snapshot)} disabled={!painter.snapshot && selected.length !== 1}
+    className={className}
     title={painter.message || "复制颜色、字号和线宽；再次点击关闭"}
-    style={{ border: "1px solid var(--color-border, #aaa)", borderRadius: 5, padding: "5px 9px", background: painter.snapshot ? "#dbeafe" : "transparent", color: painter.snapshot ? "#174da3" : "inherit" }}
     onClick={() => {
       if (painter.snapshot) { painter.set(null, null); return; }
+      const state = useEditorStore.getState();
       const object = editableObjects(state.source, state.snapshot.scene?.elements, new Set(selected), state.snapshot.parseResult)[0];
       if (!object || object.type === "group") { painter.set(null, null, "请选择具体组件，组合不支持整体刷。"); return; }
       const snapshot = captureFormat(object);
       painter.set(snapshot, state.activeDocumentId, snapshot.skipped.length ? `已跳过 ${snapshot.skipped.join("、")}` : "点击同类型组件应用格式");
       state.dispatch({ type: "SET_TOOL_MODE", mode: "select" });
-    }}>🖌 格式刷</button>;
+    }}><RiPaintBrushLine size={17} aria-hidden="true" /><span>格式刷</span></button>;
 }

@@ -16,7 +16,7 @@
   background: var(--bg-pane);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 18px;
   box-shadow:
     0 1px 3px color-mix(in srgb, black 12%, transparent),
     0 18px 48px color-mix(in srgb, black 22%, transparent);
@@ -27,6 +27,7 @@
 
 .sheet::backdrop {
   background: color-mix(in srgb, var(--text) 38%, transparent);
+  backdrop-filter: blur(5px);
 }
 
 [data-color-scheme="dark"] .sheet::backdrop {
@@ -93,7 +94,7 @@
   background: var(--bg-pane);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 16px;
   box-shadow:
     0 1px 3px color-mix(in srgb, black 12%, transparent),
     0 18px 48px color-mix(in srgb, black 22%, transparent);
@@ -128,7 +129,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border-lighter);
 }
 
@@ -148,7 +149,7 @@
 
 .title {
   margin: 0;
-  font-size: calc(var(--app-ui-scale, 1) * 13px);
+  font-size: calc(var(--app-ui-scale, 1) * 15px);
   font-weight: 600;
   line-height: 1.25;
   color: var(--text);

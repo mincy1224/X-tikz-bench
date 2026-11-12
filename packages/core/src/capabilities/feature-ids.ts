@@ -22,6 +22,8 @@ export const FEATURE_IDS = [
   "path_operator_curves",
   "path_cycle",
   "shape_rectangle",
+  "project_png",
+  "project_array_grid",
   "shape_rounded_rectangle",
   "shape_chamfered_rectangle",
   "shape_cross_out",

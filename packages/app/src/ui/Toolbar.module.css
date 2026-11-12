@@ -3,13 +3,17 @@
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 0;
-  background: var(--bg-app);
+  gap: 3px;
+  background: var(--bg-header);
   border-bottom: 1px solid var(--border);
-  padding: 4px 6px;
-  min-height: 40px;
+  padding: 7px 18px;
+  min-height: 50px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
+.toolbar > * { flex-shrink: 0; }
+.formatPainter { padding-inline: 10px; gap: 6px; }
+.formatPainter[aria-pressed="true"] { background: var(--accent-btn-bg); color: var(--accent-dark); border-color: var(--accent-btn-border); }
 
 :global(html[data-desktop-os="macos"]) .toolbar {
   background: transparent;
@@ -21,11 +25,12 @@
 }
 
 .title {
-  font-size: calc(var(--app-ui-scale, 1) * 12px);
-  font-weight: 700;
+  font-size: calc(var(--app-ui-scale, 1) * 11px);
+  font-weight: 750;
   color: var(--text);
-  padding: 0 8px 0 2px;
-  margin-right: 2px;
+  padding: 0 11px 0 2px;
+  margin-right: 5px;
+  letter-spacing: 0.09em;
   white-space: nowrap;
 }
 
@@ -37,14 +42,15 @@
   width: 1px;
   height: 20px;
   background: var(--border);
-  margin: 0 3px;
+  margin: 0 8px;
   flex-shrink: 0;
 }
 
 .group {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 /* ── Standard Button ──────────────────────────────────────────────────────── */
@@ -54,20 +60,21 @@
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 4px;
-  height: 32px;
-  min-width: 32px;
+  padding: 6px;
+  height: 36px;
+  min-width: 36px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 9px;
   font-size: calc(var(--app-ui-scale, 1) * 11px);
   font-family: inherit;
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  transition: background-color 0.1s ease, border-color 0.1s ease;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
+.btn:active:not(:disabled) { transform: translateY(1px); }
 
 .btn:hover:not(:disabled) {
   background: var(--btn-hover-bg);
@@ -85,12 +92,16 @@
 
 /* Native-style active state: subtle gray highlight */
 .btnActive {
-  background: color-mix(in srgb, var(--text) 12%, transparent);
+  background: var(--accent-btn-bg);
+  border-color: var(--accent-btn-border);
+  color: var(--accent-dark);
 }
 
 .btnActive:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text) 18%, transparent);
+  background: var(--accent-btn-hover-bg);
 }
+
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 .btnPartial {
   border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
@@ -199,7 +210,7 @@
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 
-@media (max-width: 768px) {
+@media (max-width: 1000px) {
   .toolbar {
     min-height: 44px;
     overflow-x: auto;

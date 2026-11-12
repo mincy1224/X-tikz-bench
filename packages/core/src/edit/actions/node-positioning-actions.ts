@@ -92,16 +92,18 @@ export function applyPositionNodeRelativeToAction(
   source: string,
   action: PositionNodeRelativeToAction,
   evaluateOptions: EvaluateOptions | undefined,
-  parseOptions: EditParseOptions
+  parseOptions: EditParseOptions,
+  semanticSnapshot?: ReturnType<typeof evaluateTikzFigure>
 ): EditActionResult {
-  return preflightPositionNodeRelativeToAction(source, action, evaluateOptions, parseOptions).result;
+  return preflightPositionNodeRelativeToAction(source, action, evaluateOptions, parseOptions, semanticSnapshot).result;
 }
 
 export function preflightPositionNodeRelativeToAction(
   source: string,
   action: PositionNodeRelativeToAction,
   evaluateOptions: EvaluateOptions | undefined,
-  parseOptions: EditParseOptions
+  parseOptions: EditParseOptions,
+  semanticSnapshot?: ReturnType<typeof evaluateTikzFigure>
 ): PositionNodeRelativeToPreflight {
   const nodeResolution = resolveEditableNodeRef(source, action.nodeId, parseOptions);
   if (nodeResolution.kind !== "found") {
@@ -123,7 +125,9 @@ export function preflightPositionNodeRelativeToAction(
   }
 
   const parsed = parseTikzForEdit(source, parseOptions);
-  const semantic = evaluateTikzFigure(parsed.figure, source, evaluateOptions);
+  const semantic = semanticSnapshot?.scene.span.from === parsed.figure.span.from && semanticSnapshot.scene.span.to === parsed.figure.span.to
+    ? semanticSnapshot
+    : evaluateTikzFigure(parsed.figure, source, evaluateOptions);
   const placement = resolveRelativePlacementContext({
     semantic,
     nodeSourceId: nodeResolution.nodeRef.nodeSourceId,
@@ -139,9 +143,8 @@ export function preflightPositionNodeRelativeToAction(
   if (!positioningEntry) {
     return unsupportedPreflight("Could not serialize relative positioning option.");
   }
-  if (hasNegativePositioningDistance(positioningEntry)) {
-    return unsupportedPreflight("Selected target would require a negative positioning distance.");
-  }
+  // PGF's positioning library parses signed distances before applying the
+  // direction vector. Overlapping nodes can therefore keep their exact position.
 
   const rewritten = rewriteNodePlacementSource({
     source,
@@ -195,7 +198,8 @@ export function applyConvertNodePositionToAbsoluteAction(
   source: string,
   action: ConvertNodePositionToAbsoluteAction,
   evaluateOptions: EvaluateOptions | undefined,
-  parseOptions: EditParseOptions
+  parseOptions: EditParseOptions,
+  semanticSnapshot?: ReturnType<typeof evaluateTikzFigure>
 ): EditActionResult {
   const nodeResolution = resolveEditableNodeRef(source, action.nodeId, parseOptions);
   if (nodeResolution.kind !== "found") {
@@ -203,7 +207,9 @@ export function applyConvertNodePositionToAbsoluteAction(
   }
 
   const parsed = parseTikzForEdit(source, parseOptions);
-  const semantic = evaluateTikzFigure(parsed.figure, source, evaluateOptions);
+  const semantic = semanticSnapshot?.scene.span.from === parsed.figure.span.from && semanticSnapshot.scene.span.to === parsed.figure.span.to
+    ? semanticSnapshot
+    : evaluateTikzFigure(parsed.figure, source, evaluateOptions);
   if (hasPathAttachment(semantic.scene.elements, nodeResolution.nodeRef.nodeSourceId)) {
     return { kind: "unsupported", reason: "Path-attached nodes cannot be converted to absolute positioning." };
   }
@@ -702,15 +708,6 @@ function resolveExplicitAnchor(options: OptionListAst | undefined): string | nul
 
 function normalizeAnchorName(anchor: string): string {
   return anchor.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function hasNegativePositioningDistance(entry: string): boolean {
-  const equals = entry.indexOf("=");
-  if (equals < 0) {
-    return false;
-  }
-  const value = entry.slice(equals + 1).trim();
-  return value.startsWith("-") || value.startsWith("{-") || /\band\s*-/iu.test(value);
 }
 
 function resolveInlineAtCoordinateReplacementSpan(node: NodeItem): Span | null {

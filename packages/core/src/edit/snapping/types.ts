@@ -144,6 +144,7 @@ export type SelectionGeometry = {
 
 export type BuildSnapContextInput = {
   sceneElements: SceneElement[];
+  includeMatrixCells?: boolean;
   referenceBounds?: ReadonlyMap<string, WorldBounds>;
   selectedSourceIds: readonly string[];
   zoom: number;

@@ -4,6 +4,8 @@ import { resolvePropertyTarget } from "../property-target.js";
 import type { EditParseOptions } from "../parse-options.js";
 import { parseMatrixRowsForEdit, resolveMatrixMode } from "../../semantic/nodes/matrix.js";
 import type { Span } from "../../ast/types.js";
+import { arrayGridBorderSource, ARRAY_EMPTY_CELL, isArrayGrid, MATH_MATRIX_MARKER } from "../matrix-grid-source.js";
+import { applyTextReplacements } from "../statement-ops.js";
 
 
 type MatrixStructureTarget = {
@@ -11,6 +13,9 @@ type MatrixStructureTarget = {
   matrixText: string;
   matrixTextSpan: Span;
   cellSeparator: string;
+  arrayGrid: boolean;
+  mathPreset: boolean;
+  gridBorderSpan?: Span | null;
 };
 
 export type AddMatrixRowAction = {
@@ -51,9 +56,7 @@ export function applyAddMatrixRowAction(
     return { kind: "unsupported", reason: `addMatrixRow rowIndex must be in 1..${rowCount + 1}.` };
   }
   rows.splice(action.rowIndex - 1, 0, Array.from<string>({ length: colCount }).fill(""));
-  return rewriteMatrixText(source, target.value.matrixTextSpan, serializeMatrixRows(rows, target.value.cellSeparator), [
-    action.matrixSourceId
-  ]);
+  return rewriteMatrixText(source, target.value, rows);
 }
 
 export function applyRemoveMatrixRowAction(
@@ -73,9 +76,7 @@ export function applyRemoveMatrixRowAction(
     return { kind: "unsupported", reason: `removeMatrixRow rowIndex must be in 1..${rowCount}.` };
   }
   rows.splice(action.rowIndex - 1, 1);
-  return rewriteMatrixText(source, target.value.matrixTextSpan, serializeMatrixRows(rows, target.value.cellSeparator), [
-    action.matrixSourceId
-  ]);
+  return rewriteMatrixText(source, target.value, rows);
 }
 
 export function applyAddMatrixColumnAction(
@@ -94,9 +95,7 @@ export function applyAddMatrixColumnAction(
   for (const row of rows) {
     row.splice(action.columnIndex - 1, 0, "");
   }
-  return rewriteMatrixText(source, target.value.matrixTextSpan, serializeMatrixRows(rows, target.value.cellSeparator), [
-    action.matrixSourceId
-  ]);
+  return rewriteMatrixText(source, target.value, rows);
 }
 
 export function applyRemoveMatrixColumnAction(
@@ -118,9 +117,7 @@ export function applyRemoveMatrixColumnAction(
   for (const row of rows) {
     row.splice(action.columnIndex - 1, 1);
   }
-  return rewriteMatrixText(source, target.value.matrixTextSpan, serializeMatrixRows(rows, target.value.cellSeparator), [
-    action.matrixSourceId
-  ]);
+  return rewriteMatrixText(source, target.value, rows);
 }
 
 export function applyTransposeMatrixAction(
@@ -139,12 +136,10 @@ export function applyTransposeMatrixAction(
     for (let row = 0; row < rowCount; row += 1) {
       nextRow.push(rows[row][column]);
     }
-    transposed.push(trimTrailingEmptyCells(nextRow));
+    transposed.push(target.value.arrayGrid ? nextRow : trimTrailingEmptyCells(nextRow));
   }
 
-  return rewriteMatrixText(source, target.value.matrixTextSpan, serializeMatrixRows(transposed, target.value.cellSeparator), [
-    action.matrixSourceId
-  ]);
+  return rewriteMatrixText(source, target.value, transposed);
 }
 
 function resolveMatrixStructureTarget(
@@ -167,13 +162,18 @@ function resolveMatrixStructureTarget(
     return { kind: "unsupported", reason: "Matrix structural actions require a matrix statement target." };
   }
 
+  const arrayGrid = isArrayGrid(resolved.target.options);
+  const gridBorder = resolved.target.options?.entries.find((entry) => entry.kind === "kv" && entry.key === "append after command");
   return {
     kind: "ok",
     value: {
       matrixSourceId,
       matrixText: source.slice(matrixTextSpan.from, matrixTextSpan.to),
       matrixTextSpan,
-      cellSeparator: mode.cellSeparator
+      cellSeparator: mode.cellSeparator,
+      arrayGrid,
+      mathPreset: resolved.target.options?.entries.some((entry) => entry.raw.trim() === MATH_MATRIX_MARKER) ?? false,
+      gridBorderSpan: gridBorder?.kind === "kv" ? gridBorder.valueSpan : undefined
     }
   };
 }
@@ -221,10 +221,24 @@ function serializeMatrixRows(rows: ReadonlyArray<ReadonlyArray<string>>, separat
 
 function rewriteMatrixText(
   source: string,
-  matrixTextSpan: Span,
-  replacement: string,
-  changedSourceIds: string[]
+  target: MatrixStructureTarget,
+  rows: string[][]
 ): EditActionResultLike {
+  const matrixTextSpan = target.matrixTextSpan;
+  const body = serializeMatrixRows(target.arrayGrid ? rows.map((row) => row.map((cell) => cell.trim() || ARRAY_EMPTY_CELL)) : rows, target.cellSeparator);
+  const replacement = target.arrayGrid || target.mathPreset ? `\n  ${body} \\\\\n` : body;
+  const changedSourceIds = [target.matrixSourceId];
+  if (target.arrayGrid) {
+    if (!target.gridBorderSpan || !source.slice(target.gridBorderSpan.from, target.gridBorderSpan.to).startsWith("{\\pgfextra{\\begin{pgfinterruptpath}")) {
+      return { kind: "unsupported", reason: "数组边框已手动修改，不能安全重排行列。" };
+    }
+    const columns = Math.max(1, ...rows.map((row) => row.length));
+    const updated = applyTextReplacements(source, [
+      { span: target.gridBorderSpan, text: arrayGridBorderSource(rows.length, columns) },
+      { span: matrixTextSpan, text: replacement }
+    ]);
+    return { kind: "success", newSource: updated.source, patches: updated.patches, changedSourceIds };
+  }
   const updated = replaceSpan(source, matrixTextSpan, replacement);
   if (updated.source === source) {
     return { kind: "unsupported", reason: "Matrix structural edit would not change the source." };

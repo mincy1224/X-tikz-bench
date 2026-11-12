@@ -76,9 +76,10 @@ export function resolveAddShapeDraft(
   requestedWidthPt: number,
   requestedHeightPt: number
 ): AddShapeDraftResolution {
-  const shape = normalizeNodeShape(shapeRaw);
-  const safeRequestedWidth = Math.max(requestedWidthPt, DEFAULT_NODE_MINIMUM_DIMENSION_PT);
-  const safeRequestedHeight = Math.max(requestedHeightPt, DEFAULT_NODE_MINIMUM_DIMENSION_PT);
+  const square = shapeRaw === "square";
+  const shape = square || shapeRaw === "round-corner rectangle" ? "rectangle" : normalizeNodeShape(shapeRaw);
+  const safeRequestedWidth = Math.max(requestedWidthPt, square ? requestedHeightPt : 0, DEFAULT_NODE_MINIMUM_DIMENSION_PT);
+  const safeRequestedHeight = square ? safeRequestedWidth : Math.max(requestedHeightPt, DEFAULT_NODE_MINIMUM_DIMENSION_PT);
   const candidates = dedupeConstraintCandidates([
     buildConstraintCandidate(shape, safeRequestedWidth, safeRequestedHeight),
     buildConstraintCandidate(shape, safeRequestedWidth),

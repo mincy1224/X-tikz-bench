@@ -44,7 +44,9 @@ export function loadSettings(): AppSettings {
       },
       rendering: {
         ...DEFAULT_SETTINGS.rendering,
-        ...parsed.rendering
+        ...parsed.rendering,
+        // Only offer fonts shipped by prepare-tikzjax-assets; recover older preferences.
+        mathJaxFont: parsed.rendering?.mathJaxFont === "mathjax-stix2" ? "mathjax-stix2" : "mathjax-newcm"
       }
     };
   } catch {

@@ -3,7 +3,11 @@ import http from "node:http";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError } from "./latex/compiler.js";
-import { createProject, getProject, initializeProjectStore, listProjects, ProjectInputError, softDeleteProject, updateProject } from "./projects/store.js";
+import { createProject, getAllProjectAssets, getAssetPreview, getProject, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, softDeleteProject, storeProjectPng, updateProject } from "./projects/store.js";
+import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
+import { splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
+import { importProjectArchive } from "./projects/import-archive.js";
+import { strToU8, zipSync, type Zippable } from "fflate";
 import { checkTexPackages, compileTextBatch, validateTexTextBatch } from "./latex/text.js";
 
 const config = loadConfig();
@@ -35,7 +39,7 @@ function attachment(response: http.ServerResponse, contentType: string, fileName
   response.end(data);
 }
 
-async function body(request: http.IncomingMessage, limit: number): Promise<string> {
+async function binaryBody(request: http.IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -44,9 +48,12 @@ async function body(request: http.IncomingMessage, limit: number): Promise<strin
     if (size > limit) throw new Error("Request body exceeds the configured source limit.");
     chunks.push(buffer);
   }
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks);
 }
 
+async function body(request: http.IncomingMessage, limit: number): Promise<string> {
+  return (await binaryBody(request, limit)).toString("utf8");
+}
 async function serveStatic(response: http.ServerResponse, pathname: string): Promise<void> {
   const requested = pathname === "/" ? "/index.html" : decodeURIComponent(pathname);
   const file = path.resolve(config.webRoot, `.${requested}`);
@@ -75,14 +82,49 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       json(response, 200, { projects: await listProjects(config, url.searchParams.get("deleted") === "1") });
       return;
     }
+    if (request.method === "POST" && url.pathname === "/api/projects/import") {
+      if (request.headers["content-type"] !== "application/zip") {
+        json(response, 415, { error: "请选择 LaTeX 工程 ZIP。" });
+        return;
+      }
+      const { source, assets } = await importProjectArchive(await binaryBody(request, 50 * 1024 * 1024), config.maxSourceBytes);
+      const project = await createProject(config, url.searchParams.get("name") ?? "", source, url.searchParams.get("description") ?? "", undefined, assets);
+      json(response, 201, { project });
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/api/projects") {
-      const payload = JSON.parse(await body(request, config.maxSourceBytes + 16_384)) as { name?: unknown; description?: unknown; source?: unknown };
+      const payload = JSON.parse(await body(request, config.maxSourceBytes + 16_384)) as { name?: unknown; description?: unknown; source?: unknown; copyFrom?: unknown };
       const name = typeof payload.name === "string" ? payload.name : "";
       const source = typeof payload.source === "string" ? payload.source : undefined;
       if (source !== undefined && Buffer.byteLength(source, "utf8") > config.maxSourceBytes) {
         json(response, 413, { error: "Source is too large." }); return;
       }
-      json(response, 201, { project: await createProject(config, name, source, typeof payload.description === "string" ? payload.description : "") });
+      json(response, 201, { project: await createProject(config, name, source, typeof payload.description === "string" ? payload.description : "", typeof payload.copyFrom === "string" ? payload.copyFrom : undefined) });
+      return;
+    }
+    const pngMatch = /^\/api\/projects\/([0-9a-f-]+)\/(?:png|assets)(?:\/([0-9a-f]{64}\.(?:png|pdf)))?$/u.exec(url.pathname);
+    if (pngMatch && request.method === "GET" && !pngMatch[2]) {
+      const project = await getProject(config, pngMatch[1]);
+      if (!project || project.deletedAt) { json(response, 404, { error: "Project not found." }); return; }
+      json(response, 200, { assets: await listProjectAssets(config, project.id) });
+      return;
+    }
+    if (pngMatch && request.method === "POST" && !pngMatch[2]) {
+      const contentType = request.headers["content-type"];
+      if (contentType !== "image/png" && contentType !== "application/pdf") { json(response, 415, { error: "请选择 PNG 或 PDF 文件。" }); return; }
+      try {
+        const asset = await storeProjectPng(config, pngMatch[1], await binaryBody(request, MAX_PNG_BYTES), url.searchParams.get("name") ?? "", contentType === "application/pdf" ? "pdf" : "png");
+        json(response, asset ? 201 : 404, asset ? { asset } : { error: "Project not found." });
+      } catch (error) {
+        json(response, 422, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (pngMatch?.[2] && request.method === "GET") {
+      const png = await getAssetPreview(config, pngMatch[1], pngMatch[2]);
+      if (!png) { json(response, 404, { error: "Asset not found." }); return; }
+      response.writeHead(200, { ...securityHeaders, "content-type": "image/png", "content-length": png.length, "cache-control": "private, max-age=31536000, immutable" });
+      response.end(png);
       return;
     }
     const projectMatch = /^\/api\/projects\/([0-9a-f-]+)$/iu.exec(url.pathname);
@@ -112,7 +154,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       json(response, deleted ? 200 : 404, deleted ? { ok: true } : { error: "Project not found." });
       return;
     }
-    const exportMatch = /^\/api\/projects\/([0-9a-f-]+)\/export\/(tex|pdf)$/iu.exec(url.pathname);
+    const exportMatch = /^\/api\/projects\/([0-9a-f-]+)\/export\/(tex|svg|pdf)$/iu.exec(url.pathname);
     if (exportMatch && (request.method === "GET" || request.method === "POST")) {
       const project = await getProject(config, exportMatch[1] ?? "");
       if (!project || project.deletedAt) { json(response, 404, { error: "Project not found." }); return; }
@@ -120,14 +162,36 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       if (draft && (typeof draft.source !== "string" || Buffer.byteLength(draft.source, "utf8") > config.maxSourceBytes)) { json(response, 413, { error: "Invalid or oversized source." }); return; }
       const exportSource = draft ? draft.source as string : project.source;
       if (exportMatch[2] === "tex") {
-        attachment(response, "application/x-tex; charset=utf-8", `${project.name}.tex`, createStandaloneDocument(exportSource));
+        try {
+          const pngs = await getAllProjectAssets(config, project.id);
+          for (const key of referencedPngKeys(exportSource)) {
+            if (!pngs.has(`assets/${key}`)) throw new Error(`缺少图片文件：assets/${key}`);
+          }
+          const tex = createStandaloneDocument(exportSource, "xelatex");
+          const picture = splitProjectSource(tex);
+          const entries: Zippable = picture ? {
+            "main.tex": strToU8(`${picture.prefix}\n\\input{figure.tikz}\n${picture.suffix}`),
+            "figure.tikz": strToU8(picture.body ? `${picture.body}\n` : ""),
+            "assets/": new Uint8Array()
+          } : { "main.tex": strToU8(tex), "assets/": new Uint8Array() };
+          for (const [name, bytes] of pngs) entries[name] = new Uint8Array(bytes);
+          attachment(response, "application/zip", `${project.name}.zip`, Buffer.from(zipSync(entries, { level: 0 })));
+        } catch (error) {
+          json(response, 422, { error: error instanceof Error ? error.message : String(error) });
+        }
         return;
       }
       if (activeCompiles >= config.maxConcurrency) { json(response, 429, { error: "Too many compilations in progress." }); return; }
       activeCompiles += 1;
       try {
-        const result = await compileLatexPdf(exportSource, config);
-        attachment(response, "application/pdf", `${project.name}.pdf`, result.pdf);
+        const pngs = await getReferencedProjectPngs(config, project.id, exportSource);
+        if (exportMatch[2] === "svg") {
+          const result = await compileLatex(exportSource, config, "xelatex", pngs);
+          attachment(response, "image/svg+xml; charset=utf-8", `${project.name}.svg`, result.svg);
+        } else {
+          const result = await compileLatexPdf(exportSource, config, "xelatex", pngs);
+          attachment(response, "application/pdf", `${project.name}.pdf`, result.pdf);
+        }
       } catch (error) {
         json(response, 422, error instanceof LatexCompileError ? { error: error.message, log: error.log, diagnostics: error.diagnostics } : { error: error instanceof Error ? error.message : String(error) });
       } finally { activeCompiles -= 1; }
@@ -163,7 +227,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
         return;
       }
       const raw = await body(request, config.maxSourceBytes + 16_384);
-      const payload = JSON.parse(raw) as { source?: unknown; engine?: unknown; sourceVersion?: unknown };
+      const payload = JSON.parse(raw) as { source?: unknown; engine?: unknown; sourceVersion?: unknown; projectId?: unknown };
       if (payload.engine !== undefined && payload.engine !== "latex" && payload.engine !== "xelatex" && payload.engine !== "auto") {
         json(response, 400, { ok: false, error: "Supported profiles: auto, latex, xelatex." });
         return;
@@ -174,7 +238,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       }
       activeCompiles += 1;
       try {
-        const result = await compileLatex(payload.source, config, payload.engine);
+        const pngs = await getReferencedProjectPngs(config, typeof payload.projectId === "string" ? payload.projectId : undefined, payload.source);
+        const result = await compileLatex(payload.source, config, payload.engine, pngs);
         json(response, 200, { ok: true, ...result, sourceVersion: typeof payload.sourceVersion === "string" ? payload.sourceVersion : undefined });
       }
       catch (error) {

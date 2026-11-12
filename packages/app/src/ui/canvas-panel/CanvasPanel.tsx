@@ -1591,7 +1591,8 @@ export const CanvasPanel = memo(function CanvasPanel({
       };
       const preflight = preflightPositionNodeRelativeToAction(source, action, {
         evaluateOptions: { sourceFingerprint, textEngine: activeTextEngine },
-        parseOptions: { ...editParseOptions, propertyWriteMode: "drag-frame", sourceFingerprint }
+        parseOptions: { ...editParseOptions, propertyWriteMode: "drag-frame", sourceFingerprint },
+        semanticSnapshot: snapshot.source === source && snapshot.semanticResult ? { source, semantic: snapshot.semanticResult } : undefined
       });
       const { result } = preflight;
       if (result.kind === "success" || result.kind === "partial") {
@@ -1932,7 +1933,8 @@ export const CanvasPanel = memo(function CanvasPanel({
       });
       const result = applyEditAction(sourceForEdit, snapshot.editHandles, action, {
         evaluateOptions: { sourceFingerprint, textEngine: textEngineRef.current },
-        parseOptions: { ...editParseOptions, propertyWriteMode: "drag-frame", sourceFingerprint }
+        parseOptions: { ...editParseOptions, propertyWriteMode: "drag-frame", sourceFingerprint },
+        semanticSnapshot: snapshot.source === sourceForEdit && snapshot.semanticResult ? { source: sourceForEdit, semantic: snapshot.semanticResult } : undefined
       });
 
       if (result.kind === "success" || result.kind === "partial") {
@@ -1974,7 +1976,7 @@ export const CanvasPanel = memo(function CanvasPanel({
 
       return { sourceChanged: false };
     },
-    [activeDocumentId, dispatch, editParseOptions, source, sourceRevision, snapshot.editHandles]
+    [activeDocumentId, dispatch, editParseOptions, source, sourceRevision, snapshot.editHandles, snapshot.source, snapshot.semanticResult]
   );
   applyActionWithFeedbackRef.current = applyActionWithFeedback;
 
@@ -2183,6 +2185,16 @@ export const CanvasPanel = memo(function CanvasPanel({
 
   const onElementHoverChange = useCallback((id: string | null) => { dispatch({ type: "SET_HOVERED_ELEMENT", id }); }, [dispatch]);
 
+  const sceneElementsBySource = useMemo(() => {
+    const bySource = new Map<string, SceneElement[]>();
+    for (const element of snapshot.scene?.elements ?? []) {
+      const id = element.sourceRef.sourceId;
+      const own = bySource.get(id);
+      if (own) own.push(element); else bySource.set(id, [element]);
+    }
+    return bySource;
+  }, [snapshot.scene]);
+
   const resolveEditableTextTarget = useCallback(
     (targetId: string, region: HitRegion | undefined): EditableTextTarget | null => {
       if (region?.shape !== "rect" || region.interactionMode === "move") {
@@ -2240,7 +2252,7 @@ export const CanvasPanel = memo(function CanvasPanel({
       const preferredBounds =
         snapshot.scene && svgResult
           ? preferredNodeBoundsForSource(
-              snapshot.scene.elements,
+              sceneElementsBySource.get(targetId) ?? [],
               targetId,
               svgResult.viewBox,
               sourceBoundsSvg.get(targetId) ?? null
@@ -2278,7 +2290,7 @@ export const CanvasPanel = memo(function CanvasPanel({
             )
       };
     },
-    [sceneTextByRegionKey, snapshot.parseResult, snapshot.scene, source, sourceBoundsSvg, svgResult]
+    [sceneTextByRegionKey, sceneElementsBySource, snapshot.parseResult, snapshot.scene, source, sourceBoundsSvg, svgResult]
   );
 
   const editableTextRegionKeys = useMemo(() => {
@@ -2307,7 +2319,19 @@ export const CanvasPanel = memo(function CanvasPanel({
         }
       }
       if (candidates.length === 0) {
-        return null;
+        const element = sceneElementsBySource.get(targetId)?.find((part) => part.matrixCell);
+        const bounds = sourceBoundsSvg.get(targetId);
+        if (!element?.matrixCell || !bounds) return null;
+        const width = bounds.maxX - bounds.minX, height = bounds.maxY - bounds.minY;
+        const span = element.matrixCell.textSpan;
+        return {
+          sourceId: targetId, sceneTextId: element.id, sourceSpan: span, text: source.slice(span.from, span.to),
+          renderSourceText: source.slice(span.from, span.to), usesMathJax: false, paragraphId: null,
+          layoutKind: "matrix-cell", style: element.style, totalWidth: width, isForeachTemplateEdit: false,
+          region: { shape: "rect", key: `matrix-edit:${targetId}`, sourceId: targetId, targetId, x: bounds.minX, y: bounds.minY,
+            width, height, cx: bounds.minX + width / 2, cy: bounds.minY + height / 2, rotation: 0 },
+          popupAnchorBox: bounds
+        };
       }
       if (preferredSceneTextId) {
         const preferred = candidates.find((candidate) => candidate.sceneTextId === preferredSceneTextId);
@@ -2317,7 +2341,7 @@ export const CanvasPanel = memo(function CanvasPanel({
       }
       return candidates[0] ?? null;
     },
-    [hitRegions, resolveEditableTextTarget]
+    [hitRegions, resolveEditableTextTarget, sceneElementsBySource, sourceBoundsSvg, source]
   );
 
   const resolveRenderedMathTextElement = useCallback((target: EditableTextTarget): SVGSVGElement | null => {
@@ -2660,6 +2684,27 @@ export const CanvasPanel = memo(function CanvasPanel({
   }, [dispatchCanvasTextEditAction]);
 
   const handleTextEditTextareaKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.nativeEvent.isComposing) {
+      const matrixId = useMatrixEditing.getState().matrixId;
+      if (matrixId && textEditingSession) {
+        const cells = [...new Map((snapshot.scene?.elements ?? []).flatMap((element) => element.matrixCell?.matrixSourceId === matrixId
+          ? [[element.matrixCell.cellSourceId, element.matrixCell] as const] : [])).values()].sort((a, b) => a.row - b.row || a.column - b.column);
+        const index = cells.findIndex((cell) => cell.cellSourceId === textEditingSession.sourceId);
+        const next = index < 0 ? undefined : cells[index + (event.shiftKey ? -1 : 1)];
+        event.preventDefault(); event.stopPropagation();
+        const target = next ? resolveEditableTextTargetById(next.cellSourceId) : null;
+        if (target) {
+          dispatch({ type: "SELECT", id: target.sourceId, additive: false });
+          startTextEditingSession(target, 0, target.text.length);
+        } else {
+          dispatchCanvasTextEditAction({ type: "session_close" });
+          dispatch({ type: "SELECT", id: matrixId, additive: false });
+          useMatrixEditing.getState().leave();
+          viewportRef.current?.focus({ preventScroll: true });
+        }
+        return;
+      }
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -2700,7 +2745,7 @@ export const CanvasPanel = memo(function CanvasPanel({
       return;
     }
     pendingTextEditInsertTextRef.current = event.key.length === 1 ? event.key : null;
-  }, [dispatchCanvasTextEditAction, dispatch]);
+  }, [dispatchCanvasTextEditAction, dispatch, resolveEditableTextTargetById, snapshot.scene, startTextEditingSession, textEditingSession]);
 
   const handleTextEditPopupPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -3075,6 +3120,12 @@ export const CanvasPanel = memo(function CanvasPanel({
     viewportWorldBounds,
     setDragState,
     resolveEditableTextTarget,
+    openMatrixCellText: (id) => {
+      const target = resolveEditableTextTargetById(id);
+      if (!target) return false;
+      startTextEditingSession(target, 0, target.text.length);
+      return true;
+    },
     densePathSourceIds,
     expandedDensePathSourceId,
     setExpandedDensePathSourceId,

@@ -57,6 +57,7 @@ import {
 import { resolveCalloutPointerOffset, resolveNodeShapeGeometryParams } from "./shape-geometry.js";
 import { resolveRectangleSplitHorizontal, resolveRectangleSplitParts } from "./multipart.js";
 import type { NodeLayout, NodeShape } from "./types.js";
+import { ARRAY_EMPTY_CELL, isArrayGrid, MATH_MATRIX_MARKER } from "../../edit/matrix-grid-source.js";
 
 type MatrixSpacingSpec = {
   gap: number;
@@ -943,6 +944,7 @@ export function evaluateMatrixNodeItem(params: EvaluateMatrixNodeParams): Matrix
   }
 
   const behindCellElements: SceneElement[] = [];
+  const arrayGrid = isArrayGrid(params.item.options);
   const frontCellElements: SceneElement[] = [];
   for (let row = 0; row < rowCount; row += 1) {
     for (let column = 0; column < colCount; column += 1) {
@@ -982,6 +984,12 @@ export function evaluateMatrixNodeItem(params: EvaluateMatrixNodeParams): Matrix
         )
       };
       const evaluatedCell = params.evaluateNestedNode(cellItem, position);
+      if (arrayGrid && ![...evaluatedCell.behindElements, ...evaluatedCell.frontElements].some((element) => element.kind === "Path")) {
+        // The transparent cell surface retains the existing per-cell selection and
+        // text editor even when the cell has neither text nor its own paint.
+        evaluatedCell.frontElements.unshift(makeNodeBoxElement(cellItem.id, cellItem.id, position, colWidths[column], rowHeights[row],
+          { ...params.nodeStyle, fill: "#ffffff", fillOpacity: 0, stroke: null, roundedCorners: null, shadowLayers: [] }, cellItem.span));
+      }
       const matrixCellInfo: MatrixCellInfo = {
         matrixSourceId: params.statement.id,
         cellSourceId: cellItem.id,
@@ -998,6 +1006,40 @@ export function evaluateMatrixNodeItem(params: EvaluateMatrixNodeParams): Matrix
     }
   }
 
+  if (arrayGrid) {
+    const border = makeNodeBoxElement(params.statement.id, `${params.item.id}:array-grid`, matrixCenter, contentWidth, contentHeight,
+      { ...params.nodeStyle, stroke: "#000000", fill: null, lineWidth: .4, roundedCorners: null, markerStart: null, markerEnd: null,
+        dashArray: null, doubleStroke: false, shadowLayers: [] }, params.item.span);
+    for (let column = 0; column < colCount - 1; column++) {
+      const x = matrixCenter.x + xCenters[column] - contentCenter.x + colWidths[column] / 2;
+      border.commands.push({ kind: "M", to: wp(x, matrixCenter.y - contentHeight / 2) }, { kind: "L", to: wp(x, matrixCenter.y + contentHeight / 2) });
+    }
+    for (let row = 0; row < rowCount - 1; row++) {
+      const y = matrixCenter.y + yCenters[row] - contentCenter.y - rowHeights[row] / 2;
+      border.commands.push({ kind: "M", to: wp(matrixCenter.x - contentWidth / 2, y) }, { kind: "L", to: wp(matrixCenter.x + contentWidth / 2, y) });
+    }
+    frontCellElements.push(border);
+    params.markFeature("project_array_grid", "supported");
+  }
+
+  if (params.item.options?.entries.some((entry) => entry.raw.trim() === MATH_MATRIX_MARKER)) {
+    const height = contentHeight + 4, arc = Math.min(6, height * .17);
+    for (const side of ["left", "right"] as const) {
+      const value = side === "left" ? "(" : ")";
+      if (!params.item.options.entries.some((entry) => entry.kind === "kv" && entry.key === `${side} delimiter` && normalizeOptionValue(entry.valueRaw) === value)) continue;
+      const sign = side === "left" ? -1 : 1;
+      const x = matrixCenter.x + sign * (contentWidth / 2 + 2);
+      const y = matrixCenter.y;
+      const delimiter = makeNodeBoxElement(params.statement.id, `${params.item.id}:${side}-delimiter`, matrixCenter, contentWidth, height,
+        { ...params.nodeStyle, stroke: params.nodeStyle.textColor ?? "#000000", fill: null, lineWidth: .65,
+          markerStart: null, markerEnd: null, doubleStroke: false, dashArray: null, shadowLayers: [] }, params.item.span);
+      delimiter.commands = [
+        { kind: "M", to: wp(x, y + height / 2) },
+        { kind: "C", c1: wp(x + sign * arc, y + height * .27), c2: wp(x + sign * arc, y - height * .27), to: wp(x, y - height / 2) }
+      ];
+      frontCellElements.push(delimiter);
+    }
+  }
   const matrixLayer = resolveNodeLayer(params.effectiveNodeOptions, params.context);
   if (matrixLayer === "behind") {
     return {
@@ -1371,6 +1413,10 @@ function parseMatrixCell(rawCell: MatrixParsedCell, mode: MatrixMode): MatrixCel
     working = trimmedLeading.text;
   }
 
+  if (mode.includeEmptyCells && working.startsWith(ARRAY_EMPTY_CELL)) {
+    working = working.slice(ARRAY_EMPTY_CELL.length);
+    workingOffset += ARRAY_EMPTY_CELL.length;
+  }
   const explicitNode = parseExplicitMatrixNode(working, workingOffset);
   if (explicitNode) {
     const options = mergeOptionLists([mergeOptionLists(prefixOptions), explicitNode.options]);
