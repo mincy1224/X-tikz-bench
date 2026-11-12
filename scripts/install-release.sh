@@ -98,7 +98,7 @@ systemd-run --quiet --wait --pipe --collect --unit="x-tikz-bench-preflight-$stam
   -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes \
   -p RestrictSUIDSGID=yes -p LockPersonality=yes -p MemoryMax=1G -p TasksMax=128 \
   -p "WorkingDirectory=$release" -p Environment=HOME=/var/lib/x-tikz-bench \
-  -p EnvironmentFile=/etc/default/x-tikz-bench /usr/bin/node "$release/scripts/verify-runtime.mjs"
+  -p EnvironmentFile=/etc/default/x-tikz-bench /usr/bin/node "$release/apps/server/dist/verify-runtime.js"
 systemctl stop x-tikz-bench.service || true
 database=/var/lib/x-tikz-bench/x-tikz-bench.sqlite
 configured_db=$(sed -n 's/^TIKZ_DATABASE_PATH=//p' /etc/default/x-tikz-bench | tail -n 1)

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { loadConfig } from "../apps/server/dist/config.js";
-import { compileLatex, compileLatexPdf } from "../apps/server/dist/latex/compiler.js";
+import { loadConfig } from "../apps/server/src/config.ts";
+import { compileLatex, compileLatexPdf } from "../apps/server/src/latex/compiler.ts";
 const config = loadConfig([]);
 for (const [command, args] of [["node", ["--version"]], [config.sqliteBin, ["--version"]], [config.latexBin, ["--version"]], [config.xelatexBin, ["--version"]], [config.dvisvgmBin, ["--version"]], [config.dvipdfmxBin, ["--version"]]]) {
   const result = spawnSync(command, args, { encoding: "utf8", timeout: 10000 });

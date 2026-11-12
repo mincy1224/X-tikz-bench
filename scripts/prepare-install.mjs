@@ -17,7 +17,7 @@ await copy("apps/server/dist", "apps/server/dist");
 await writeFile(path.join(target, "apps/server/package.json"), JSON.stringify({ type: "module", version, private: true }, null, 2) + "\n");
 for (const file of ["LICENSE", "NOTICE.md"]) await copy(file, file);
 await copy("scripts/install-release.sh", "install.sh");
-for (const file of ["manage-release.sh", "verify-runtime.mjs", "x-tikz-bench", "x-tikz-bench.service"]) await copy(`scripts/${file}`, `scripts/${file}`);
+for (const file of ["manage-release.sh", "x-tikz-bench", "x-tikz-bench.service"]) await copy(`scripts/${file}`, `scripts/${file}`);
 await writeFile(path.join(target, "manifest.json"), JSON.stringify({ schema: 1, version, builtAt: new Date().toISOString(), target: "linux", nodeMinimum: 18, tex: "existing-texlive", sourceVersion: packageInfo.version }, null, 2) + "\n");
 const licenses = path.join(target, "licenses");
 await mkdir(licenses, { recursive: true });

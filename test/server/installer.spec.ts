@@ -22,9 +22,10 @@ describe("release installer lifecycle in an isolated filesystem", () => {
       await put("package/install.sh", installer);
       await put("package/manifest.json", JSON.stringify({ schema: 1, version: "0.6.0" }));
       await put("package/apps/server/dist/index.js", "new program");
+      await put("package/apps/server/dist/verify-runtime.js", "// staged runtime verifier");
       await put("package/scripts/x-tikz-bench", "new cli");
       await put("package/scripts/x-tikz-bench.service", "new service");
-      const files = ["install.sh", "manifest.json", "apps/server/dist/index.js", "scripts/x-tikz-bench", "scripts/x-tikz-bench.service"];
+      const files = ["install.sh", "manifest.json", "apps/server/dist/index.js", "apps/server/dist/verify-runtime.js", "scripts/x-tikz-bench", "scripts/x-tikz-bench.service"];
       await put("package/SHA256SUMS", (await Promise.all(files.map(async (file) => `${createHash("sha256").update(await readFile(path.join(directory, "package", file))).digest("hex")}  ${file}`))).join("\n") + "\n");
       await put("opt/apps/server/dist/index.js", "legacy program");
       await put("etc/default/x-tikz-bench", "CUSTOM_SETTING=preserved\n");
@@ -45,7 +46,7 @@ describe("release installer lifecycle in an isolated filesystem", () => {
       await put("mock/fc-list", "#!/bin/bash\necho ChineseFont\n");
       await put("mock/flock", "#!/bin/bash\nexit 0\n");
       await put("mock/sleep", "#!/bin/bash\nexit 0\n");
-      await put("mock/systemd-run", "#!/bin/bash\nexit 0\n");
+      await put("mock/systemd-run", "#!/bin/bash\n[[ ${!#} == */apps/server/dist/verify-runtime.js && -f ${!#} ]]\n");
       await put("mock/apt-get", "#!/bin/bash\nexit 99\n");
       if (process.platform === "win32") await put("mock/install", "#!/bin/bash\nif [[ $1 == -d ]]; then shift; if [[ $1 == -m ]]; then shift 2; fi; mkdir -p \"$@\"; else if [[ $1 == -m ]]; then shift 2; fi; cp \"$1\" \"$2\"; fi\n");
       if (process.platform === "win32") {
