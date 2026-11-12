@@ -1,10 +1,25 @@
-import { crc32 } from "node:zlib";
-
 export const MAX_PNG_BYTES = 10 * 1024 * 1024;
 export const MAX_PROJECT_PNG_BYTES = 50 * 1024 * 1024;
 export const PNG_KEY = /^[0-9a-f]{64}\.png$/u;
 export const ASSET_KEY = /^[0-9a-f]{64}\.(?:png|pdf)$/u;
 export type ProjectAsset = { key: string; name: string; width: number; height: number };
+
+// PNG uses the reflected CRC-32 polynomial. The server also runs on Node 18.
+const crcTable = Uint32Array.from({ length: 256 }, (_, byte) => {
+  let crc = byte;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return crc;
+});
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 export function readPngDimensions(bytes: Buffer): { width: number; height: number } {
   if (bytes.length < 45 || bytes.length > MAX_PNG_BYTES || bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a" ||
