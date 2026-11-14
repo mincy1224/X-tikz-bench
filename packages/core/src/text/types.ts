@@ -47,6 +47,7 @@ export type NodeTextRenderInfo =
   | {
       mode: "plain";
       nativeSerif?: { fontStyle: NodeTextFontStyle; fontWeight: NodeTextFontWeight };
+      lineBreakExtraPt?: number[];
     }
   | {
       mode: "mathjax" | "tex";

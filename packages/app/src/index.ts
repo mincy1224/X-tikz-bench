@@ -1,4 +1,5 @@
 export { App } from "./ui/App";
+export { ProjectBrand } from "./ui/ProjectBrand";
 export { APP_MENU_COMMAND_IDS, APP_MENU_DEFINITION } from "./app-menu/index.js";
 export { CANVAS_CONTEXT_MENU_DEFINITION } from "./context-menu/index.js";
 export { setActiveEditorPlatform, getActiveEditorPlatform } from "./platform/current.js";

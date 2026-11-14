@@ -94,6 +94,7 @@ export function CanvasSVGLayer(params: {
     <div
       className={className}
       data-testid="canvas-svg-layer"
+      data-no-localize=""
       data-show-transparency-grid={showTransparencyGrid ? "true" : "false"}
       data-show-document-bounds={showDocumentBounds ? "true" : "false"}
       ref={(node) => {

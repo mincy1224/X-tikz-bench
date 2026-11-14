@@ -60,27 +60,6 @@
 .projectPalette input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 3px; }
 .projectPalette [role="alert"] { margin: 0; color: var(--danger, #b44); }
 
-.brandMark {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: var(--project-brand, #4656b8);
-  color: #fff;
-  font: 700 16px/1 var(--font-ui);
-  letter-spacing: -0.08em;
-}
-
-.brandName {
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.13em;
-  white-space: nowrap;
-}
-
 .projectDivider { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
 
 .projectBack, .projectExport, .projectExportPrimary, .projectProof {
@@ -188,7 +167,7 @@
 }
 
 @media (max-width: 1000px) {
-  .brandName, .projectDivider { display: none; }
+  .projectDivider { display: none; }
   .projectBar { padding: 0 12px; gap: 8px; }
   .projectExportSecondary { display: none; }
   .projectDownloads { display: block; }
@@ -200,7 +179,7 @@
   .projectBar { gap: 5px; }
 }
 @media (max-width: 600px) {
-  .brandMark, .projectBack span, .projectSaveStatus { display: none; }
+  .projectBack span, .projectSaveStatus { display: none; }
   .projectName { flex: 1; max-width: none; }
   .projectBarSpacer { display: none; }
   .projectBack { padding-inline: 8px; }

@@ -34,6 +34,7 @@ import { ProjectCompilationContext, ProjectIdContext } from "./project-png-image
 import { ProjectPngProperties } from "./ProjectPngProperties";
 import { ProjectShapeProperties } from "./ProjectShapeProperties";
 import { ProjectPalette } from "./ProjectPalette";
+import { ProjectBrand } from "./ProjectBrand";
 import { projectPaletteColors } from "tikz-editor/tex/project-source";
 import { ProjectAssetPanel, PROJECT_ASSET_DRAG_TYPE, type ProjectAsset } from "./ProjectAssetPanel";
 import css from "./App.module.css";
@@ -2110,8 +2111,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
     >
       {project ? (
         <div className={css.projectBar}>
-          <span className={css.brandMark} aria-hidden="true">X</span>
-          <span className={css.brandName}>TIKZ BENCH</span>
+          <ProjectBrand compact />
           <span className={css.projectDivider} aria-hidden="true" />
           <button type="button" className={css.projectBack} onClick={project.onBack} aria-label="← Projects">← <span>Projects</span></button>
           <button type="button" className={css.projectName} onClick={project.onRename} title="Rename project">

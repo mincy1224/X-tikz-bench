@@ -566,7 +566,8 @@ export function emitSvgModel(scene: SceneFigure, opts: EmitSvgOptions = {}): Svg
     if (textTransforms.length > 0) {
       attrs.push(`transform="${textTransforms.join(" ")}"`);
     }
-    const textBody = encodeTextBody(element.text, textX, position.y);
+    const lineBreakExtraPt = element.textRenderInfo?.mode === "plain" ? element.textRenderInfo.lineBreakExtraPt : undefined;
+    const textBody = encodeTextBody(element.text, textX, position.y, element.style.fontSize, lineBreakExtraPt);
     appendPart(
       `${element.id}:text`,
       element.sourceRef.sourceId,
@@ -1492,20 +1493,22 @@ function estimateTextBlockWidth(text: string, fontSize: number): number {
   return maxChars * fontSize * 0.7;
 }
 
-function encodeTextBody(text: string, x: number, y: number): string {
+function encodeTextBody(text: string, x: number, y: number, fontSize: number, lineBreakExtraPt?: number[]): string {
   const lines = text.split("\n");
   if (lines.length <= 1) {
     return escapeText(text);
   }
 
   const lineHeightEm = 1.15;
-  const startOffsetEm = -((lines.length - 1) * lineHeightEm) / 2;
+  const extraHeightEm = (lineBreakExtraPt?.reduce((total, gap) => total + gap, 0) ?? 0) / fontSize;
+  const startOffsetEm = -((lines.length - 1) * lineHeightEm + extraHeightEm) / 2;
   return lines
     .map((line, index) => {
       if (index === 0) {
         return `<tspan x="${fmt(x)}" y="${fmt(y)}" dy="${fmt(startOffsetEm)}em">${escapeText(line)}</tspan>`;
       }
-      return `<tspan x="${fmt(x)}" dy="${fmt(lineHeightEm)}em">${escapeText(line)}</tspan>`;
+      const lineGapEm = lineHeightEm + (lineBreakExtraPt?.[index - 1] ?? 0) / fontSize;
+      return `<tspan x="${fmt(x)}" dy="${fmt(lineGapEm)}em">${escapeText(line)}</tspan>`;
     })
     .join("");
 }

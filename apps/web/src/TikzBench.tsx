@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RiAddLine, RiEditLine } from "@remixicon/react";
-import { App } from "@tikz-editor/app";
+import { App, ProjectBrand } from "@tikz-editor/app";
 import css from "./TikzBench.module.css";
 import { ProjectDialog } from "./ProjectDialog";
 import { CoalescingSaveQueue } from "./coalescing-save-queue";
@@ -94,7 +94,7 @@ function ProjectHome() {
   return (
     <main className={css.home}>
       <header className={css.homeHeader}>
-        <div className={css.homeBrand}><div className={css.brandMark} aria-hidden="true">X</div><strong>TikZ Bench</strong></div>
+        <ProjectBrand />
       </header>
       <div className={css.dashboard}>
       <aside className={css.sidebar}>

@@ -144,6 +144,7 @@ export function resolveNodeLayout(
   let normalizedText = normalizeTextForLineBreakPolicy(text, explicitLineBreaksActive);
   let plainStyle = style;
   let nativeSerif = false;
+  let lineBreakExtraPt: number[] | undefined;
   if (textEngine?.preferNativeSerif && textMode === "text" && style.fontFamily === "serif") {
     let candidate = normalizedText;
     let fontStyle = style.fontStyle;
@@ -177,15 +178,25 @@ export function resolveNodeLayout(
       if (command === "textmd" || command === "textnormal") fontWeight = "normal";
       candidate = group.text;
     }
-    if (!/[\\{}$%&#_^~]/u.test(candidate)) {
-      normalizedText = candidate;
+    const extraSpacing: number[] = [];
+    const plainText = candidate.replace(EXPLICIT_LINE_BREAK_PATTERN, (lineBreak: string) => {
+      const extra = /\[([^\]]*)\]/u.exec(lineBreak)?.[1];
+      const length = extra === undefined ? 0 : parseLength(extra, "pt");
+      if (length == null) return lineBreak;
+      extraSpacing.push(length);
+      return "\n";
+    });
+    if (!/[\\{}$%&#_^~]/u.test(plainText)) {
+      normalizedText = plainText;
       plainStyle = { ...style, fontStyle, fontWeight };
       nativeSerif = true;
+      if (textWidth == null && extraSpacing.some((length) => length !== 0) &&
+        extraSpacing.length === plainText.split("\n").length - 1) lineBreakExtraPt = extraSpacing;
     }
   }
 
   let textRenderInfo: NodeTextRenderInfo = nativeSerif
-    ? { mode: "plain", nativeSerif: { fontStyle: plainStyle.fontStyle, fontWeight: plainStyle.fontWeight } }
+    ? { mode: "plain", nativeSerif: { fontStyle: plainStyle.fontStyle, fontWeight: plainStyle.fontWeight }, lineBreakExtraPt }
     : { mode: "plain" };
   let textLines = computeNodeTextLines(normalizedText, textWidth, charWidth);
   let textNaturalWidth: number;
@@ -231,7 +242,7 @@ export function resolveNodeLayout(
   } else {
     const plainMetrics = measurePlainTextBlock(textLines, plainStyle, charWidth, lineHeight, baseLineY, midLineY);
     textNaturalWidth = plainMetrics.width;
-    textNaturalHeight = plainMetrics.height;
+    textNaturalHeight = Math.max(0, plainMetrics.height + (lineBreakExtraPt?.reduce((total, gap) => total + gap, 0) ?? 0));
     baseLineY = plainMetrics.baselineY;
     midLineY = plainMetrics.midLineY;
   }

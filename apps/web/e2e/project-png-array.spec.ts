@@ -218,14 +218,21 @@ test("named canvases keep different drawings and share the project palette and a
 });
 
 test("the canvas defaults to Times New Roman with native italic and bold italic", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("tikz-editor:settings", JSON.stringify({ version: 1, settings: { general: { language: "zh-CN" } } }));
+  });
   await gotoApp(page);
   await setSource(page, String.raw`\node at (0,0) {Regular};
 \node[font=\itshape] at (0,1) {Italic};
 \node at (0,2) {\textbf{\textit{Bold italic}}};
 \node at (0,3) {{\itshape Declaration}};
-\node at (0,4) {\emph{Emphasis}};`);
+\node at (0,4) {\emph{Emphasis}};
+\node[align=center,font=\itshape\fontsize{14pt}{14pt}\selectfont\bfseries] at (0,5) {Where is the\\[7pt]orange ball?};
+\node[font=\fontsize{14pt}{14.4pt}\selectfont] at (0,7) {Text};`);
   const layer = page.getByTestId("canvas-svg-layer");
   const text = layer.locator("text");
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(text.filter({ hasText: /^Text$/u })).toBeVisible();
   await expect(text.filter({ hasText: /^Regular$/u })).toHaveCSS("font-family", /Times New Roman/u);
   await expect(text.filter({ hasText: /^Italic$/u })).toHaveCSS("font-style", "italic");
   const boldItalic = text.filter({ hasText: /^Bold italic$/u });
@@ -233,6 +240,12 @@ test("the canvas defaults to Times New Roman with native italic and bold italic"
   await expect(boldItalic).toHaveCSS("font-weight", "700");
   await expect(text.filter({ hasText: /^Declaration$/u })).toHaveCSS("font-style", "italic");
   await expect(text.filter({ hasText: /^Emphasis$/u })).toHaveCSS("font-style", "italic");
+  const question = text.filter({ hasText: "Where is the" });
+  await expect(question).toHaveCSS("font-family", /Times New Roman/u);
+  await expect(question).toHaveCSS("font-style", "italic");
+  await expect(question).toHaveCSS("font-weight", "700");
+  await expect(question.locator("tspan")).toHaveText(["Where is the", "orange ball?"]);
+  await expect(question.locator("tspan").last()).toHaveAttribute("dy", "1.65em");
 });
 
 test("oversized canvases pan with both scrollbars", async ({ page }) => {
