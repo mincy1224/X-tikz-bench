@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { crc32, deflateSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
 import { dragBetweenPoints, focusCanvas, gotoApp, interactionLayer, readSource, selectFirstCanvasElement, setSource, waitForHitRegions } from "./helpers";
@@ -194,6 +193,12 @@ test("named canvases keep different drawings and share the project palette and a
   const { project: second } = await (await request.get(`${api}?canvas=${project.canvases[1].id}`)).json();
   expect(second.source).toContain("\\fill[theme-accent]");
   expect(second.source).not.toContain("\\draw");
+  await page.getByRole("button", { name: "重命名画布" }).click();
+  await page.getByLabel("画布名称").fill("概览");
+  await page.getByRole("button", { name: "保存名称" }).click();
+  await expect(page.getByRole("button", { name: "概览", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "概览", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
 test("the canvas defaults to Times New Roman with native italic and bold italic", async ({ page }) => {
@@ -239,31 +244,43 @@ test("simple rectangle keeps style and size when adding a centered label", async
   await expect(page.getByTestId("canvas-svg-layer").getByText("文字")).toBeVisible();
 });
 
-test("XeLaTeX proof downloads the visible artifact and disables stale exports", async ({ page }) => {
+test("XeLaTeX proof displays the active canvas PDF and keeps the last successful result", async ({ page }) => {
   await gotoApp(page);
+  await setSource(page, String.raw`\node at (0,0) {Main canvas only};`);
+  await page.getByRole("button", { name: "新建画布" }).click();
+  await page.getByLabel("画布名称").fill("校样测试画布");
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  await page.waitForURL(/\/canvas\//u);
+  await expect.poll(() => readSource(page)).toBe("");
+  const projectId = new URL(page.url()).pathname.split("/")[2];
   const first = String.raw`\begin{tikzpicture}\draw (0,0)--(1,1);\end{tikzpicture}`;
   const second = first.replace("(1,1)", "(3,3)");
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><title>first proof</title><path d="M0 0 L20 20" stroke="black"/></svg>';
   const versions: string[] = [];
   await page.route("**/api/latex/compile", async (route) => {
-    const data = route.request().postDataJSON() as { engine: string; source: string; sourceVersion: string; projectId: string };
+    const data = route.request().postDataJSON() as { engine: string; proof: boolean; source: string; sourceVersion: string; projectId: string };
     expect(data.engine).toBe("xelatex");
-    expect(data.projectId).toMatch(/^[a-f0-9-]+$/u);
+    expect(data.proof).toBe(true);
+    expect(data.projectId).toBe(projectId);
+    expect(data.source).not.toContain("Main canvas only");
     versions.push(data.sourceVersion);
     if (data.source.includes(second)) await route.fulfill({ status: 422, json: { error: "fixture compilation failed" } });
-    else await route.fulfill({ json: { sourceVersion: data.sourceVersion, svg } });
+    else {
+      expect(data.source).toContain(first);
+      await route.fulfill({ contentType: "application/pdf", body: "%PDF-1.4\n%%EOF\n" });
+    }
   });
   await setSource(page, first);
   await expect(page.getByRole("button", { name: "Times New Roman", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "TeX 校样", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "TeX 编译校样" });
+  await expect(dialog.getByText("校样测试画布", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /SVG/u })).toHaveCount(0);
   await expect(dialog.getByText("与源码同步")).toBeVisible();
-  const download = page.waitForEvent("download");
-  await dialog.getByRole("link", { name: "导出真实 SVG" }).click();
-  expect(await readFile((await (await download).path())!, "utf8")).toBe(svg);
+  const preview = dialog.locator('iframe[title="当前画布的 XeLaTeX PDF"]');
+  await expect(preview).toHaveAttribute("src", /^blob:/u);
+  const previous = await preview.getAttribute("src");
   await setSource(page, second);
-  await expect(dialog.getByRole("button", { name: "导出真实 SVG" })).toBeDisabled();
   await expect(dialog.getByRole("alert")).toContainText("fixture compilation failed");
-  await expect(dialog.getByRole("img")).toBeVisible();
+  await expect(preview).toHaveAttribute("src", previous!);
   expect(versions).toHaveLength(2);
 });

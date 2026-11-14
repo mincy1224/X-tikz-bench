@@ -41,10 +41,20 @@
 .projectObjectBar label { display: inline-flex; align-items: center; gap: 4px; }
 .projectObjectBar input { width: 66px; }
 .projectObjectBar input, .projectObjectBar button { color: var(--text); background: var(--bg-pane); border: 1px solid var(--border); border-radius: 4px; padding: 3px; }
-.projectPalette { padding: 6px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; max-height: 160px; overflow: auto; border-bottom: 1px solid var(--border); }
-.projectPalette fieldset, .projectPalette form, .projectPalette label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.projectPalette input:not([type="color"]) { width: 7em; }
-.projectPalette input[type="color"] { width: 26px; height: 24px; padding: 0; }
+.projectPalette { background: var(--bg-pane); padding: 12px 18px; display: grid; gap: 10px; max-height: 210px; overflow: auto; border-bottom: 1px solid var(--border); }
+.projectPaletteGroups { display: flex; flex-wrap: wrap; gap: 10px; }
+.projectPalette fieldset { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; padding: 5px 8px 8px; border: 1px solid var(--border); border-radius: 8px; }
+.projectPalette legend { padding: 0 5px; color: var(--text-muted); font-weight: 650; }
+.projectPalette form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+.projectPalette form label { display: grid; gap: 4px; color: var(--text-muted); }
+.projectPalette label:has(code) { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-app); border-radius: 6px; padding: 3px 7px 3px 4px; }
+.projectPalette input { min-height: 29px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-pane); color: var(--text); font: inherit; padding: 4px 7px; }
+.projectPalette input:not([type="color"]) { width: 10em; }
+.projectPalette input[type="color"] { width: 35px; padding: 3px; cursor: pointer; }
+.projectPalette label:has(code) input { width: 23px; min-height: 22px; height: 22px; padding: 1px; }
+.projectPalette input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.projectPalette input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 3px; }
+.projectPalette [role="alert"] { margin: 0; color: var(--danger, #b44); }
 
 .brandMark {
   display: grid;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RiAddLine, RiEditLine } from "@remixicon/react";
 import { App } from "@tikz-editor/app";
 import css from "./TikzBench.module.css";
 import { ProjectDialog } from "./ProjectDialog";
@@ -163,8 +164,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
   const [saveCopy, setSaveCopy] = useState(false);
   const [showTexProof, setShowTexProof] = useState(false);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
-  const [canvasName, setCanvasName] = useState("");
-  const [addingCanvas, setAddingCanvas] = useState(false);
+  const [canvasAction, setCanvasAction] = useState<"create" | "rename" | null>(null);
   const [canvasError, setCanvasError] = useState("");
   const [switchingCanvas, setSwitchingCanvas] = useState(false);
   const projectUrl = `/api/projects/${id}?canvas=${canvasId}`;
@@ -284,34 +284,51 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     onDownloadTex: () => { void download("tex"); }
   } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, project, rename, saveStatus, uploadAsset]);
 
-  async function switchCanvas(target?: string) {
+  async function switchCanvas(target: string) {
     if (switchingCanvas) return;
     setSwitchingCanvas(true);
     setCanvasError("");
     try {
       if (draftRef.current !== project?.source || saveQueue.busy) await persist({ source: draftRef.current });
-      const next = target ?? (await api<{ canvas: { id: string } }>(`/api/projects/${id}/canvases`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: canvasName })
-      })).canvas.id;
-      navigate(next === "main" ? `/project/${id}` : `/project/${id}/canvas/${next}`);
+      navigate(target === "main" ? "/project/" + id : "/project/" + id + "/canvas/" + target);
     } catch (error) {
       setCanvasError(error instanceof Error ? error.message : String(error));
     } finally { setSwitchingCanvas(false); }
   }
 
-  return projectProps ? <>
-    <div className={css.canvasBar} aria-label="工程画布">
-      {project?.canvases?.map((canvas) => <button type="button" key={canvas.id} aria-pressed={canvas.id === canvasId}
-        disabled={switchingCanvas || canvas.id === canvasId} onClick={() => { void switchCanvas(canvas.id); }}>{canvas.name}</button>)}
-      {addingCanvas ? <form onSubmit={(event) => { event.preventDefault(); void switchCanvas(); }}>
-        <label>画布名称 <input autoFocus required maxLength={120} value={canvasName} disabled={switchingCanvas} onChange={(event) => { setCanvasName(event.currentTarget.value); }} /></label>
-        <button type="submit" disabled={switchingCanvas || !canvasName.trim()}>创建</button>
-        <button type="button" disabled={switchingCanvas} onClick={() => { setAddingCanvas(false); }}>取消</button>
-      </form> : <button type="button" onClick={() => { setAddingCanvas(true); }}>新建画布</button>}
-      {canvasError ? <span role="alert">{canvasError}</span> : null}
+  async function saveCanvasName(name: string) {
+    if (canvasAction === "create" && (draftRef.current !== project?.source || saveQueue.busy)) {
+      await persist({ source: draftRef.current });
+    }
+    const { canvas } = await api<{ canvas: { id: string; name: string } }>("/api/projects/" + id + "/canvases?canvas=" + canvasId, {
+      method: canvasAction === "create" ? "POST" : "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name })
+    });
+    if (canvasAction === "create") {
+      navigate("/project/" + id + "/canvas/" + canvas.id);
+    } else {
+      setProject((current) => current && { ...current, canvases: current.canvases?.map((entry) => entry.id === canvas.id ? canvas : entry) });
+    }
+  }
+
+  const canvasNavigation = <nav className={css.canvasBar} aria-label="工程画布">
+    <div className={css.canvasTabs}>
+      {project?.canvases?.map((canvas) => <button type="button" key={canvas.id} aria-current={canvas.id === canvasId ? "page" : undefined}
+        title={canvas.name} disabled={switchingCanvas} onClick={() => { if (canvas.id !== canvasId) void switchCanvas(canvas.id); }}>{canvas.name}</button>)}
     </div>
-    <App project={projectProps} />
-    {showTexProof ? <TexProof projectId={id} source={fullSource(draftSource)} onClose={() => { setShowTexProof(false); }} /> : null}
+    <button type="button" onClick={() => { setCanvasAction("create"); }}><RiAddLine size={16} aria-hidden="true" />新建画布</button>
+    <button type="button" onClick={() => { setCanvasAction("rename"); }}><RiEditLine size={15} aria-hidden="true" />重命名画布</button>
+    {canvasError ? <span role="alert">{canvasError}</span> : null}
+  </nav>;
+
+  return projectProps ? <>
+    <App project={projectProps} canvasNavigation={canvasNavigation} />
+    {canvasAction && <ProjectDialog canvasAction={canvasAction}
+      name={canvasAction === "rename" ? project?.canvases?.find((canvas) => canvas.id === canvasId)?.name : ""}
+      onSubmit={saveCanvasName} onClose={() => { setCanvasAction(null); }} />}
+    {showTexProof ? <TexProof projectId={id} canvasName={project?.canvases?.find((canvas) => canvas.id === canvasId)?.name}
+      source={fullSource(draftSource)} onClose={() => { setShowTexProof(false); }} /> : null}
     {editInfo && project ? <ProjectDialog name={project.name} description={project.description} onClose={() => { setEditInfo(false); }} onSubmit={async (name, description) => { await persist({ name, description }); }} /> : null}
     {saveCopy && project ? <ProjectDialog name={`${project.name} draft`} description={project.description} onClose={() => { setSaveCopy(false); }} onSubmit={async (name, description) => {
     const response = await api<{ project: Project }>("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description, source: fullSource(draftRef.current), copyFrom: id }) });

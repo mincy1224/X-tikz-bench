@@ -118,6 +118,10 @@ CREATE TABLE IF NOT EXISTS project_shared_palette (
   project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
   source TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_main_canvas_names (
+  project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS project_pngs (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   key TEXT NOT NULL,
@@ -156,7 +160,8 @@ export async function getProjectCanvas(config: ServerConfig, id: string, canvasI
   if (!project || project.deletedAt) return null;
   const output = await runSql(config, `SELECT id,name,source FROM project_canvases WHERE project_id=${quote(id)} ORDER BY created_at,id;`, true);
   const extra = (JSON.parse(output.trim() || "[]") as (Canvas & { source: string })[]);
-  const canvases = [{ id: "main", name: "画布 1" }, ...extra.map(({ id, name }) => ({ id, name }))];
+  const mainName = (await runSql(config, `SELECT name FROM project_main_canvas_names WHERE project_id=${quote(id)};`)).replace(/\r?\n$/u, "");
+  const canvases = [{ id: "main", name: mainName || "画布 1" }, ...extra.map(({ id, name }) => ({ id, name }))];
   const selected = extra.find((entry) => entry.id === canvasId);
   if (canvasId !== "main" && !selected) return null;
   const paletteOutput = await runSql(config, `SELECT source FROM project_shared_palette WHERE project_id=${quote(id)};`, true);
@@ -182,6 +187,20 @@ export function createProjectCanvas(config: ServerConfig, projectId: string, val
     await checkedWrite(config, `INSERT INTO project_canvases(id,project_id,name,created_at) VALUES(${quote(id)},${quote(projectId)},${quote(name)},${quote(now)});
       UPDATE projects SET updated_at=${quote(now)} WHERE id=${quote(projectId)};`);
     return { id, name };
+  });
+}
+
+export function renameProjectCanvas(config: ServerConfig, projectId: string, canvasId: string, value: string): Promise<Canvas | null> {
+  return serializeWrite(async () => {
+    const project = await getProjectCanvas(config, projectId, canvasId);
+    if (!project) return null;
+    const name = value.trim();
+    if (!name || name.length > 120 || /[\r\n]/u.test(name)) throw new ProjectInputError("请输入 1–120 个字符的画布名称。", "invalid_name");
+    if (project.canvases.some((canvas) => canvas.id !== canvasId && canvas.name === name)) throw new ProjectInputError("已存在同名画布。", "duplicate_name");
+    await checkedWrite(config, canvasId === "main"
+      ? `INSERT INTO project_main_canvas_names(project_id,name) VALUES(${quote(projectId)},${quote(name)}) ON CONFLICT(project_id) DO UPDATE SET name=excluded.name;`
+      : `UPDATE project_canvases SET name=${quote(name)} WHERE id=${quote(canvasId)} AND project_id=${quote(projectId)};`);
+    return { id: canvasId, name };
   });
 }
 

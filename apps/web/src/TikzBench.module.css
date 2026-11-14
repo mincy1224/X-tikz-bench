@@ -3,11 +3,11 @@
 :global(button), :global(input), :global(textarea) { font: inherit; }
 
 .home {
-  --surface: #fff;
-  --canvas: #f6f7fb;
-  --ink: #22273b;
-  --muted: #636c80;
-  --edge: #e1e5ef;
+  --surface: var(--bg-pane, #fff);
+  --canvas: var(--bg-app, #f7f7f3);
+  --ink: var(--text, #252936);
+  --muted: var(--text-muted, #636c80);
+  --edge: var(--border, #e1e5ef);
   --selected: #e9edff;
   min-height: 100vh;
   background: var(--canvas);
@@ -59,11 +59,11 @@
 .editorLoading { min-height: 100vh; display: grid; place-items: center; color: #757d8b; }
 
 .dialogBackdrop { position: fixed; inset: 0; z-index: 20000; display: grid; place-items: center; padding: 20px; background: rgb(26 31 45 / 52%); backdrop-filter: blur(6px); }
-.projectDialog { width: min(480px, 100%); padding: 30px; border: 1px solid #e8eaf0; border-radius: 18px; background: #fff; box-shadow: 0 28px 82px rgb(18 24 38 / 24%); }
+.projectDialog { width: min(440px, 100%); padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-pane); color: var(--text); box-shadow: 0 24px 72px rgb(18 24 38 / 24%); }
 .projectDialog h2 { margin: 0 0 24px; font-size: 22px; letter-spacing: -.035em; }
 .projectDialog label { display: block; margin-bottom: 19px; color: #434b58; font-size: 12px; font-weight: 650; }
 .projectDialog label span { margin-left: 8px; color: #9198a3; font-weight: 400; }
-.projectDialog input, .projectDialog textarea { display: block; width: 100%; margin-top: 9px; padding: 10px 12px; border: 1px solid #d9dde4; border-radius: 9px; outline: none; background: #fbfbfa; color: #252936; }
+.projectDialog input, .projectDialog textarea { display: block; width: 100%; margin-top: 9px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; outline: none; background: var(--bg-app); color: var(--text); }
 .projectDialog input:focus, .projectDialog textarea:focus { border-color: #8996df; box-shadow: 0 0 0 3px rgb(89 104 200 / 12%); }
 .projectDialog .actions { justify-content: flex-end; }
 .projectDialog .actions button:not(.primary) { min-height: 39px; padding: 9px 15px; border: 1px solid #d8dce2; border-radius: 10px; background: #fff; color: #414957; cursor: pointer; font-size: 12px; font-weight: 650; }
@@ -85,14 +85,7 @@
   .content { padding-top: 20px; }
   .projectTable th, .projectTable td { padding: 8px; }
 }
-:global(html[data-color-scheme="dark"]) .home {
-  --surface: #242837;
-  --canvas: #1c202c;
-  --ink: #eef0f6;
-  --muted: #b0b8ca;
-  --edge: #41495e;
-  --selected: #373f60;
-}
+:global(html[data-color-scheme="dark"]) .home { --selected: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
 :global(html[data-color-scheme="dark"]) .empty { background: #282e38; border-color: #4a5261; color: #a7afbd; }
 :global(html[data-color-scheme="dark"]) .empty h3 { color: #f0f1f5; }
 :global(html[data-color-scheme="dark"]) .secondary, :global(html[data-color-scheme="dark"]) .projectDialog .actions button:not(.primary) { background: #323847; border-color: #4b5362; color: #e3e7ef; }
@@ -100,7 +93,11 @@
 :global(html[data-color-scheme="dark"]) .projectDialog, :global(html[data-color-scheme="dark"]) .saveHint { background: #282d38; border-color: #454c5b; color: #ecedf3; }
 :global(html[data-color-scheme="dark"]) .projectDialog label { color: #cbd1dc; }
 :global(html[data-color-scheme="dark"]) .projectDialog input, :global(html[data-color-scheme="dark"]) .projectDialog textarea { background: #212631; border-color: #4b5364; color: #f1f2f5; }
-.canvasBar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 5px 12px; background: var(--bg-pane); border-bottom: 1px solid var(--border); }
-.canvasBar form { display: flex; gap: 6px; align-items: center; }
-.canvasBar button, .canvasBar input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-pane); color: var(--text); }
-.canvasBar button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-dark); }
+.canvasBar { display: flex; align-items: center; gap: 5px; padding: 5px 16px; min-height: 40px; background: var(--bg-header); border-bottom: 1px solid var(--border-lighter); overflow-x: auto; }
+.canvasTabs { display: flex; gap: 4px; min-width: 0; overflow: auto; }
+.canvasBar button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: none; min-height: 28px; max-width: 220px; padding: 3px 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.canvasTabs button { display: block; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.canvasBar button:hover { background: var(--btn-hover-bg); color: var(--text); }
+.canvasBar button[aria-current="page"] { background: color-mix(in srgb, var(--accent) 13%, var(--bg-pane)); color: var(--accent-dark); font-weight: 650; }
+.canvasBar button:disabled { opacity: .6; cursor: wait; }
+.canvasBar [role="alert"] { color: var(--danger, #b44); }

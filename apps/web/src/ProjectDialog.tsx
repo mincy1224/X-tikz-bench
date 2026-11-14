@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import css from "./TikzBench.module.css";
 
-export function ProjectDialog({ name: initialName = "", description: initialDescription = "", onSubmit, onClose }: {
+export function ProjectDialog({ name: initialName = "", description: initialDescription = "", canvasAction, onSubmit, onClose }: {
   name?: string;
   description?: string;
+  canvasAction?: "create" | "rename";
   onSubmit: (name: string, description: string) => Promise<void>;
   onClose: () => void;
 }) {
@@ -27,7 +28,7 @@ export function ProjectDialog({ name: initialName = "", description: initialDesc
   const [error, setError] = useState<string | null>(null);
   return <div className={css.dialogBackdrop}>
     <section ref={dialog} className={css.projectDialog} role="dialog" aria-modal="true" aria-labelledby="project-dialog-title">
-      <h2 id="project-dialog-title">项目信息</h2>
+      <h2 id="project-dialog-title">{canvasAction === "create" ? "新建画布" : canvasAction === "rename" ? "重命名画布" : "项目信息"}</h2>
       <form onSubmit={(event) => {
         event.preventDefault();
         if (busy) return;
@@ -36,10 +37,10 @@ export function ProjectDialog({ name: initialName = "", description: initialDesc
           setError(error_ instanceof Error ? error_.message : String(error_));
         }).finally(() => { setBusy(false); });
       }}>
-        <label>项目名称 <input autoFocus required maxLength={120} value={name} disabled={busy} onChange={(event) => { setName(event.target.value); }} /></label>
-        <label>描述 <span>可选</span><textarea maxLength={2000} rows={4} value={description} disabled={busy} onChange={(event) => { setDescription(event.target.value); }} /></label>
+        <label>{canvasAction ? "画布名称" : "项目名称"} <input autoFocus required maxLength={120} value={name} disabled={busy} onChange={(event) => { setName(event.target.value); }} /></label>
+        {!canvasAction && <label>描述 <span>可选</span><textarea maxLength={2000} rows={4} value={description} disabled={busy} onChange={(event) => { setDescription(event.target.value); }} /></label>}
         {error ? <p role="alert" className={css.error}>{error}</p> : null}
-        <div className={css.actions}><button type="button" disabled={busy} onClick={onClose}>取消</button><button type="submit" className={css.primary} disabled={busy || !name.trim()}>{busy ? "正在保存…" : "确定"}</button></div>
+        <div className={css.actions}><button type="button" disabled={busy} onClick={onClose}>取消</button><button type="submit" className={css.primary} disabled={busy || !name.trim()}>{busy ? "正在保存…" : canvasAction === "create" ? "创建" : canvasAction === "rename" ? "保存名称" : "确定"}</button></div>
       </form>
     </section>
   </div>;

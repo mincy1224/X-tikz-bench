@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   APP_MENU_COMMAND_IDS,
@@ -240,6 +240,7 @@ function linkedFilePathKey(fileRef: DocumentFileRef | null | undefined): string 
 }
 
 export type AppProps = {
+  canvasNavigation?: ReactNode;
   project?: {
     id: string;
     name: string;
@@ -259,7 +260,7 @@ export type AppProps = {
 
 function identitySource(source: string): string { return source; }
 
-export function App({ project }: AppProps = {}) {
+export function App({ project, canvasNavigation }: AppProps = {}) {
   const [showProjectPalette, setShowProjectPalette] = useState(false);
   const preferNativeSerif = project !== undefined;
   const uiLanguage = useUiLocalization();
@@ -2134,6 +2135,7 @@ export function App({ project }: AppProps = {}) {
           <button type="button" className={css.projectExportPrimary} onClick={project.onDownloadTex}>导出 LaTeX 工程</button>
         </div>
       ) : null}
+      {canvasNavigation}
       {project && showAssets ? <ProjectAssetPanel assets={project.assets} projectId={project.id} onChoose={() => pngInput.current?.click()}
         onPlace={placeAsset} onImport={(files) => { void importAssets(files); }} /> : null}
       {assetStatus ? <div className={css.compileNotice} role="status">{assetStatus}</div> : null}

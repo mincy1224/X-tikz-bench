@@ -3,7 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError } from "./latex/compiler.js";
-import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, restoreProject, softDeleteProject, storeProjectPng, updateProject } from "./projects/store.js";
+import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, softDeleteProject, storeProjectPng, updateProject } from "./projects/store.js";
 import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
 import { splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
 import { importProjectArchive } from "./projects/import-archive.js";
@@ -14,7 +14,7 @@ const config = loadConfig();
 let activeCompiles = 0;
 const contentTypes: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
 const securityHeaders = {
-  "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -137,10 +137,12 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     }
     const canvasMatch = /^\/api\/projects\/([0-9a-f-]+)\/canvases$/iu.exec(url.pathname);
     const canvasId = url.searchParams.get("canvas") ?? "main";
-    if (canvasMatch && request.method === "POST") {
+    if (canvasMatch && (request.method === "POST" || request.method === "PATCH")) {
       const payload = JSON.parse(await body(request, 8192)) as { name?: unknown };
-      const canvas = await createProjectCanvas(config, canvasMatch[1], typeof payload.name === "string" ? payload.name : "");
-      json(response, canvas ? 201 : 404, canvas ? { canvas } : { error: "Project not found." });
+      const name = typeof payload.name === "string" ? payload.name : "";
+      const canvas = request.method === "POST" ? await createProjectCanvas(config, canvasMatch[1], name)
+        : await renameProjectCanvas(config, canvasMatch[1], canvasId, name);
+      json(response, canvas ? (request.method === "POST" ? 201 : 200) : 404, canvas ? { canvas } : { error: "找不到项目或画布。" });
       return;
     }
     if (projectMatch && request.method === "GET") {
@@ -242,7 +244,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
         return;
       }
       const raw = await body(request, config.maxSourceBytes + 16_384);
-      const payload = JSON.parse(raw) as { source?: unknown; engine?: unknown; sourceVersion?: unknown; projectId?: unknown };
+      const payload = JSON.parse(raw) as { source?: unknown; engine?: unknown; sourceVersion?: unknown; projectId?: unknown; proof?: unknown };
       if (payload.engine !== undefined && payload.engine !== "latex" && payload.engine !== "xelatex" && payload.engine !== "auto") {
         json(response, 400, { ok: false, error: "Supported profiles: auto, latex, xelatex." });
         return;
@@ -254,6 +256,12 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       activeCompiles += 1;
       try {
         const pngs = await getReferencedProjectPngs(config, typeof payload.projectId === "string" ? payload.projectId : undefined, payload.source);
+        if (payload.proof === true) {
+          const result = await compileLatexPdf(payload.source, config, "xelatex", pngs, true);
+          response.writeHead(200, { ...securityHeaders, "content-type": "application/pdf", "content-length": result.pdf.length, "cache-control": "no-store" });
+          response.end(result.pdf);
+          return;
+        }
         const result = await compileLatex(payload.source, config, payload.engine, pngs, typeof payload.projectId === "string");
         json(response, 200, { ok: true, ...result, sourceVersion: typeof payload.sourceVersion === "string" ? payload.sourceVersion : undefined });
       }

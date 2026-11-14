@@ -50,7 +50,7 @@ export function ProjectPalette() {
   }
 
   return <section className={css.projectPalette} aria-label="项目配色盘">
-    {groups.map((id) => <fieldset key={id}>
+    {groups.length > 0 && <div className={css.projectPaletteGroups}>{groups.map((id) => <fieldset key={id}>
       <legend>{id}</legend>
       {entries.filter((entry) => entry.group === id).map((entry) => <label key={entry.name}>
         <input type="color" aria-label={`修改 ${id}-${entry.name}`} value={`#${entry.hex.toLowerCase()}`} onChange={(event) => {
@@ -61,7 +61,7 @@ export function ProjectPalette() {
         }} />
         <code>{id}-{entry.name}</code>
       </label>)}
-    </fieldset>)}
+    </fieldset>)}</div>}
     <form onSubmit={add}>
       <label>组名 <input value={group} onChange={(event) => { setGroup(event.currentTarget.value); }} required /></label>
       <label>颜色名 <input value={name} onChange={(event) => { setName(event.currentTarget.value); }} placeholder="accent" required /></label>
