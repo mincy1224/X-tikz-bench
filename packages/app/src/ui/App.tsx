@@ -34,6 +34,7 @@ import { ProjectCompilationContext, ProjectIdContext } from "./project-png-image
 import { ProjectPngProperties } from "./ProjectPngProperties";
 import { ProjectShapeProperties } from "./ProjectShapeProperties";
 import { ProjectPalette } from "./ProjectPalette";
+import { projectPaletteColors } from "tikz-editor/tex/project-source";
 import { ProjectAssetPanel, PROJECT_ASSET_DRAG_TYPE, type ProjectAsset } from "./ProjectAssetPanel";
 import css from "./App.module.css";
 import "./variables.css";
@@ -242,6 +243,8 @@ function linkedFilePathKey(fileRef: DocumentFileRef | null | undefined): string 
 export type AppProps = {
   canvasNavigation?: ReactNode;
   project?: {
+    palette: string;
+    onPaletteChange: (palette: string) => Promise<void>;
     id: string;
     name: string;
     source: string;
@@ -263,6 +266,8 @@ function identitySource(source: string): string { return source; }
 export function App({ project, canvasNavigation }: AppProps = {}) {
   const [showProjectPalette, setShowProjectPalette] = useState(false);
   const preferNativeSerif = project !== undefined;
+  const palette = project?.palette ?? "";
+  const projectColors = useMemo(() => projectPaletteColors(palette), [palette]);
   const uiLanguage = useUiLocalization();
   const {
     source,
@@ -948,7 +953,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
 
   useEffect(() => {
     const scheduler = createSingleFlightScheduler<ComputeRequest, ComputeResponse>({
-      run: (request) => computeSnapshot({ ...request, preferNativeSerif }),
+      run: (request) => computeSnapshot({ ...request, preferNativeSerif, projectColors }),
       onStart: (request) => {
         if ((request.kind ?? "render") === "prewarm") {
           return;
@@ -984,7 +989,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       scheduler.dispose();
       computeSchedulerRef.current = null;
     };
-  }, [dispatch, preferNativeSerif]);
+  }, [dispatch, preferNativeSerif, projectColors]);
 
   // ── Compute pipeline ─────────────────────────────────────────────────────────
   // Keep at most one in-flight compute; while in-flight, coalesce to the latest source.
@@ -1011,7 +1016,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
     ? (source.length > 80_000 ? 220 : 120)
     : null;
 
-  const lastRenderRequest = useRef<{ documentId: string; figureId: string | null; source: string; font: typeof mathJaxFont; viewBox: typeof renderViewBox } | null>(null);
+  const lastRenderRequest = useRef<{ documentId: string; figureId: string | null; source: string; palette: string; font: typeof mathJaxFont; viewBox: typeof renderViewBox } | null>(null);
   useEffect(() => {
     const retry = () => { retryTexTextRendering();
       const state = useEditorStore.getState();
@@ -1022,15 +1027,16 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
   }, []);
   const hasSameRenderInput = useCallback(() => {
     const last = lastRenderRequest.current;
-    return last?.documentId === activeDocumentId && last.figureId === activeFigureId && last.source === source && last.font === mathJaxFont && (last.viewBox === renderViewBox || isDragComputeTrigger && last.viewBox === null);
-  }, [activeDocumentId, activeFigureId, source, mathJaxFont, renderViewBox, isDragComputeTrigger]);
+    return last?.documentId === activeDocumentId && last.figureId === activeFigureId && last.source === source && last.palette === palette && last.font === mathJaxFont && (last.viewBox === renderViewBox || isDragComputeTrigger && last.viewBox === null);
+  }, [activeDocumentId, activeFigureId, source, palette, mathJaxFont, renderViewBox, isDragComputeTrigger]);
   useEffect(() => {
     const scheduler = computeSchedulerRef.current;
     if (!scheduler || typingComputeDelay != null) {
       return;
     }
     if (hasSameRenderInput()) return;
-    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, font: mathJaxFont, viewBox: renderViewBox };
+    const paletteChanged = lastRenderRequest.current?.palette !== palette;
+    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, palette, font: mathJaxFont, viewBox: renderViewBox };
     setMathJaxFont(mathJaxFont);
     scheduler.schedule({
       id: crypto.randomUUID(),
@@ -1042,10 +1048,10 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       changedSourceIds,
       patches: lastEditPatches ? [...lastEditPatches] : null,
       patchBaseRevision: lastEditPatchBaseRevision,
-      trigger,
-      renderViewBox
+      trigger: paletteChanged ? "other" : trigger,
+      renderViewBox: paletteChanged ? null : renderViewBox
     });
-  }, [activeDocumentId, activeFigureId, changedSourceIds, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
+  }, [activeDocumentId, activeFigureId, changedSourceIds, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, palette, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
 
   useDebouncedEffect(() => {
     const scheduler = computeSchedulerRef.current;
@@ -1053,7 +1059,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       return;
     }
     if (hasSameRenderInput()) return;
-    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, font: mathJaxFont, viewBox: renderViewBox };
+    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, palette, font: mathJaxFont, viewBox: renderViewBox };
     setMathJaxFont(mathJaxFont);
     scheduler.schedule({
       id: crypto.randomUUID(),
@@ -1067,7 +1073,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       patchBaseRevision: lastEditPatchBaseRevision,
       trigger
     });
-  }, typingComputeDelay, [activeDocumentId, activeFigureId, changedSourceIds, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
+  }, typingComputeDelay, [activeDocumentId, activeFigureId, changedSourceIds, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, palette, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
 
 
   useEffect(() => {
@@ -2140,7 +2146,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
         onPlace={placeAsset} onImport={(files) => { void importAssets(files); }} /> : null}
       {assetStatus ? <div className={css.compileNotice} role="status">{assetStatus}</div> : null}
       {project ? <><ProjectPngProperties /><ProjectShapeProperties /></> : null}
-      {project && showProjectPalette ? <ProjectPalette /> : null}
+      {project && showProjectPalette ? <ProjectPalette palette={palette} onChange={project.onPaletteChange} /> : null}
       {platform.menu?.usesNativeMenuBar ? null : (
         <AppMenuBar
           definition={menuDefinition}

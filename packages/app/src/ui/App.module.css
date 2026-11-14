@@ -47,11 +47,15 @@
 .projectPalette legend { padding: 0 5px; color: var(--text-muted); font-weight: 650; }
 .projectPalette form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
 .projectPalette form label { display: grid; gap: 4px; color: var(--text-muted); }
-.projectPalette label:has(code) { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-app); border-radius: 6px; padding: 3px 7px 3px 4px; }
+.projectColor { display: inline-flex; align-items: center; gap: 4px; background: var(--bg-app); border-radius: 6px; padding: 3px 4px; }
+.projectColorCopy { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 0; border-radius: 4px; color: var(--text); cursor: pointer; }
+.projectColorCopy span { opacity: 0; }
+.projectColorCopy:hover, .projectColorCopy:focus-visible { background: var(--btn-hover-bg); }
+.projectColorCopy:hover span, .projectColorCopy:focus-visible span { opacity: 1; }
 .projectPalette input { min-height: 29px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-pane); color: var(--text); font: inherit; padding: 4px 7px; }
 .projectPalette input:not([type="color"]) { width: 10em; }
 .projectPalette input[type="color"] { width: 35px; padding: 3px; cursor: pointer; }
-.projectPalette label:has(code) input { width: 23px; min-height: 22px; height: 22px; padding: 1px; }
+.projectPalette .projectColor input { width: 23px; min-height: 22px; height: 22px; padding: 1px; }
 .projectPalette input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 .projectPalette input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 3px; }
 .projectPalette [role="alert"] { margin: 0; color: var(--danger, #b44); }
@@ -63,7 +67,7 @@
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  background: #252936;
+  background: var(--project-brand, #4656b8);
   color: #fff;
   font: 700 16px/1 var(--font-ui);
   letter-spacing: -0.08em;

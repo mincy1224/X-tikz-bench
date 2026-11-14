@@ -15,7 +15,7 @@
 }
 .homeHeader { display: flex; align-items: center; min-height: 60px; padding: 0 24px; border-bottom: 1px solid var(--edge); background: var(--surface); }
 .homeBrand { display: flex; align-items: center; gap: 10px; font-size: 16px; }
-.brandMark { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 7px; background: #4656b8; color: white; font-weight: 750; }
+.brandMark { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 7px; background: var(--project-brand, #4656b8); color: white; font-weight: 750; }
 .dashboard { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: calc(100vh - 60px); }
 .sidebar { background: var(--surface); border-right: 1px solid var(--edge); padding: 22px 15px; }
 .actions { display: flex; align-items: center; gap: 10px; }
@@ -25,7 +25,7 @@
 .sidebar nav button, .rowActions button { padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
 .sidebar nav button[aria-current], .sidebar nav button:hover, .rowActions button:hover { background: var(--selected); }
 .sidebar nav span, .sectionHeading span, .projectTitle span, .projectTable time { color: var(--muted); }
-.content { width: min(1200px, 100%); padding: 38px clamp(18px, 4vw, 52px); }
+.content { width: min(1360px, 100%); justify-self: center; padding: 38px clamp(18px, 4vw, 52px); }
 .sectionHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .sectionHeading h1 { margin: 0; font-size: 26px; }
 .sectionHeading span, .projectTable { font-size: 13px; }

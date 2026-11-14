@@ -3939,6 +3939,10 @@ export const CanvasPanel = memo(function CanvasPanel({
         svgModel={svgModel}
         svgLayerHostRef={svgLayerHostRef}
         canvasTransform={canvasTransform}
+        onCanvasScroll={(transform) => {
+          setFitToContentModeActive(false);
+          dispatchCanvasTransform(transform);
+        }}
         showTransparencyGrid={projectId === null && showTransparencyGrid}
         showDocumentBounds={showDocumentBounds}
         svgDiffHints={svgDiffHints}

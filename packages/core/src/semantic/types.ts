@@ -500,6 +500,7 @@ export type FeatureUsageState = "unused" | "used-supported" | "used-unsupported"
 export type FeatureUsage = Record<string, FeatureUsageState>;
 
 export type EvaluateOptions = {
+  projectColors?: Readonly<Record<string, string>>;
   defaultLengthUnit?: "cm" | "pt";
   maxForeachExpansions?: number;
   sourceFingerprint?: string;

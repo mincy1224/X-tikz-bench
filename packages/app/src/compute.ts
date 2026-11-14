@@ -78,6 +78,7 @@ export type ComputeRequest = {
   kind?: "render" | "prewarm";
   renderViewBox?: SvgViewBox | null;
   preferNativeSerif?: boolean;
+  projectColors?: Readonly<Record<string, string>>;
 };
 
 export type ComputeResponse = {
@@ -162,7 +163,8 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
         sourceFingerprint,
         request.renderViewBox ?? null,
         request.documentId ?? "default",
-        request.preferNativeSerif
+        request.preferNativeSerif,
+        request.projectColors
       );
       const snapshot: SessionSnapshot = {
         source: request.source,
@@ -232,7 +234,7 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
         activeFigureId: request.activeFigureId,
         includeContextDefinitions: true
       },
-      evaluate: { sourceFingerprint },
+      evaluate: { sourceFingerprint, projectColors: request.projectColors },
       svg: { padding: resolveSvgPadding(request.source, request.activeFigureId) },
       textEngine
     });
@@ -254,7 +256,7 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
     semanticSession.evaluate({
       figure: result.parse.figure,
       source: request.source,
-      options: { sourceFingerprint, textEngine },
+      options: { sourceFingerprint, textEngine, projectColors: request.projectColors },
       hints: { trigger: "other" }
     });
     phases.primeSemantic = performance.now() - phaseStartedAt;
@@ -334,7 +336,8 @@ async function computeSnapshotIncremental(
   sourceFingerprint: string | undefined,
   renderViewBox: SvgViewBox | null,
   documentId: string,
-  preferNativeSerif?: boolean
+  preferNativeSerif?: boolean,
+  projectColors?: Readonly<Record<string, string>>
 ): Promise<{
   parse: ParseTikzResult;
   semantic: EvaluateTikzResult;
@@ -374,7 +377,7 @@ async function computeSnapshotIncremental(
   let incremental = session.evaluate({
     figure: parseResult.figure,
     source: parseResult.source,
-    options: { sourceFingerprint, textEngine },
+    options: { sourceFingerprint, textEngine, projectColors },
     hints: {
       changedSourceIds,
       sourcePatches: patches,
@@ -411,7 +414,7 @@ async function computeSnapshotIncremental(
     incremental = session.evaluate({
       figure: parseResult.figure,
       source: parseResult.source,
-      options: { sourceFingerprint, textEngine },
+      options: { sourceFingerprint, textEngine, projectColors },
       hints: {
         changedSourceIds,
         sourcePatches: patches,

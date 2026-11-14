@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import { ASSET_KEY, MAX_PROJECT_PNG_BYTES, referencedPngKeys, type ProjectAsset } from "./png.js";
 import { prepareAsset, type PreparedAsset } from "./prepare-asset.js";
-import { PROJECT_PALETTE_BLOCK, withProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
+import { PROJECT_PALETTE_BLOCK, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
 
 export type Project = {
   id: string;
@@ -171,7 +171,8 @@ export async function getProjectCanvas(config: ServerConfig, id: string, canvasI
     ...project,
     canvasId,
     canvases,
-    source: withProjectPalette(selected?.source ?? project.source, palette),
+    source: withoutProjectPalette(selected?.source ?? project.source),
+    palette,
   };
 }
 
@@ -233,15 +234,17 @@ export function createProject(config: ServerConfig, name: string, source = DEFAU
   return serializeWrite(async () => {
     name = projectName(name);
     description = projectDescription(description);
+    const palette = PROJECT_PALETTE_BLOCK.exec(source)?.[0];
     const id = randomUUID();
     const now = new Date().toISOString();
     if (assets.reduce((sum, asset) => sum + asset.data.length, 0) > MAX_PROJECT_PNG_BYTES) throw new Error("项目素材超过 50 MiB。");
     if (copyFrom) await getReferencedProjectPngs(config, copyFrom, source);
-    await checkedWrite(config, `INSERT INTO projects(id,name,description,source,revision,created_at,updated_at) VALUES(${quote(id)},${quote(name)},${quote(description)},${quote(source)},1,${quote(now)},${quote(now)});
+    await checkedWrite(config, `INSERT INTO projects(id,name,description,source,revision,created_at,updated_at) VALUES(${quote(id)},${quote(name)},${quote(description)},${quote(withoutProjectPalette(source))},1,${quote(now)},${quote(now)});
+      ${palette ? `INSERT INTO project_shared_palette(project_id,source) VALUES(${quote(id)},${quote(palette)});` : ""}
       ${copyFrom ? `INSERT INTO project_pngs(project_id,key,data) SELECT ${quote(id)},key,data FROM project_pngs WHERE project_id=${quote(copyFrom)};
         INSERT INTO project_asset_details(project_id,key,name,width,height,preview) SELECT ${quote(id)},key,name,width,height,preview FROM project_asset_details WHERE project_id=${quote(copyFrom)};` : ""}
       ${assets.map((asset) => insertAssetSql(id, asset)).join("\n")}`);
-    return (await getProject(config, id))!;
+    return (await getProjectCanvas(config, id))!;
   });
 }
 
@@ -309,24 +312,23 @@ export async function getReferencedProjectPngs(config: ServerConfig, id: string 
   return result;
 }
 
-export function updateProject(config: ServerConfig, id: string, input: { name?: string; description?: string; source?: string; expectedRevision?: number; thumbnailSvg?: string | null }, canvasId = "main"): Promise<Project | "conflict" | null> {
+export function updateProject(config: ServerConfig, id: string, input: { name?: string; description?: string; source?: string; palette?: string; expectedRevision?: number; thumbnailSvg?: string | null }, canvasId = "main"): Promise<Project | "conflict" | null> {
   return serializeWrite(async () => {
     const current = await getProjectCanvas(config, id, canvasId);
     if (!current) return null;
     if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) return "conflict";
-    const nextSource = input.source ?? current.source;
+    const nextSource = input.source === undefined ? current.source : withoutProjectPalette(input.source);
+    const palette = input.palette ?? PROJECT_PALETTE_BLOCK.exec(input.source ?? "")?.[0] ?? current.palette;
     const nextName = input.name === undefined ? current.name : projectName(input.name);
     const nextDescription = input.description === undefined ? current.description : projectDescription(input.description);
-    if (nextName === current.name && nextDescription === current.description && nextSource === current.source && (input.thumbnailSvg === undefined || input.thumbnailSvg === current.thumbnailSvg)) return current;
+    if (nextName === current.name && nextDescription === current.description && nextSource === current.source && palette === current.palette && (input.thumbnailSvg === undefined || input.thumbnailSvg === current.thumbnailSvg)) return current;
     const nextRevision = current.revision + 1;
     const now = new Date().toISOString();
-    const source = nextSource.replace(PROJECT_PALETTE_BLOCK, "");
-    const palette = PROJECT_PALETTE_BLOCK.exec(nextSource)?.[0] ?? "";
     await checkedWrite(config, `
-      ${input.source === undefined ? "" : `INSERT INTO project_shared_palette(project_id,source) VALUES(${quote(id)},${quote(palette)}) ON CONFLICT(project_id) DO UPDATE SET source=excluded.source;`}
+      INSERT INTO project_shared_palette(project_id,source) VALUES(${quote(id)},${quote(palette)}) ON CONFLICT(project_id) DO UPDATE SET source=excluded.source;
       ${canvasId === "main" && nextSource !== current.source ? `INSERT INTO project_revisions(project_id,revision,source,created_at) VALUES(${quote(id)},${current.revision},${quote(current.source)},${quote(now)});` : ""}
-      ${canvasId !== "main" && input.source !== undefined ? `UPDATE project_canvases SET source=${quote(source)} WHERE id=${quote(canvasId)} AND project_id=${quote(id)};` : ""}
-      UPDATE projects SET name=${quote(nextName)},description=${quote(nextDescription)},source=${canvasId === "main" && input.source !== undefined ? quote(source) : "source"},revision=${nextRevision},thumbnail_svg=${canvasId !== "main" || input.thumbnailSvg === undefined ? "thumbnail_svg" : input.thumbnailSvg === null ? "NULL" : quote(input.thumbnailSvg)},updated_at=${quote(now)} WHERE id=${quote(id)};
+      ${canvasId !== "main" && input.source !== undefined ? `UPDATE project_canvases SET source=${quote(nextSource)} WHERE id=${quote(canvasId)} AND project_id=${quote(id)};` : ""}
+      UPDATE projects SET name=${quote(nextName)},description=${quote(nextDescription)},source=${canvasId === "main" ? quote(nextSource) : "source"},revision=${nextRevision},thumbnail_svg=${canvasId !== "main" || input.thumbnailSvg === undefined ? "thumbnail_svg" : input.thumbnailSvg === null ? "NULL" : quote(input.thumbnailSvg)},updated_at=${quote(now)} WHERE id=${quote(id)};
       DELETE FROM project_revisions WHERE project_id=${quote(id)} AND id NOT IN (SELECT id FROM project_revisions WHERE project_id=${quote(id)} ORDER BY revision DESC LIMIT 30);`);
     return await getProjectCanvas(config, id, canvasId);
   });

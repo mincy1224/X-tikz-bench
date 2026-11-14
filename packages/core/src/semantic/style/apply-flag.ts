@@ -136,7 +136,7 @@ export function applyFlagEntry(
   if (key === "thin") {
     return { style: { ...style, lineWidth: 0.4 }, transform, diagnostics: [] };
   }
-  if (key.includes("-") || raw.includes("-")) {
+  if ((key.includes("-") || raw.includes("-")) && normalizedColorCandidate === key) {
     const parsedArrow = parseArrowSpecification(raw, style);
     if (parsedArrow) {
       return { style: { ...style, markerStart: parsedArrow.start, markerEnd: parsedArrow.end }, transform, diagnostics: [] };

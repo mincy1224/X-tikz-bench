@@ -15,6 +15,7 @@
   min-height: 0;
   min-width: 0;
   display: grid;
+  position: relative;
   grid-template-columns: var(--ruler-size) 1fr;
   grid-template-rows: var(--ruler-size) 1fr;
   background: var(--bg-canvas-area);
@@ -129,6 +130,49 @@
 
 .viewportTool {
   cursor: crosshair;
+}
+
+.canvasScrollX, .canvasScrollY {
+  position: absolute;
+  z-index: 10;
+  margin: 0;
+  appearance: none;
+  background: var(--scrollbar-track);
+  border-radius: 8px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvasScrollX {
+  left: calc(var(--ruler-size) + 4px);
+  bottom: 2px;
+  width: calc(100% - var(--ruler-size) - 22px);
+  height: 13px;
+}
+
+.canvasScrollY {
+  top: calc(var(--ruler-size) + 4px);
+  right: 2px;
+  width: 13px;
+  height: calc(100% - var(--ruler-size) - 22px);
+  writing-mode: vertical-lr;
+  direction: ltr;
+}
+
+.canvasScrollX::-webkit-slider-thumb, .canvasScrollY::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: var(--canvas-scroll-thumb);
+  block-size: 10px;
+  border-radius: 8px;
+  background: var(--scrollbar-thumb);
+}
+
+.canvasScrollX::-moz-range-thumb, .canvasScrollY::-moz-range-thumb {
+  inline-size: var(--canvas-scroll-thumb);
+  block-size: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--scrollbar-thumb);
 }
 
 .viewportMagnify {
@@ -880,6 +924,8 @@
   .leftRulerSlot,
   .topRuler,
   .leftRuler,
+  .canvasScrollX,
+  .canvasScrollY,
   .warningBar,
   .snapDebugOverlay,
   .interactionLayer,

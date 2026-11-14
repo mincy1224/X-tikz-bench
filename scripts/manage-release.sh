@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export SYSTEMD_PAGER=cat
-[[ $EUID == 0 ]] || { echo '需要管理员权限' >&2; exit 1; }
+[[ $EUID == 0 ]] || { echo 'Administrator privileges are required.' >&2; exit 1; }
 exec 9>/run/lock/x-tikz-bench-upgrade.lock
-flock -n 9 || { echo '另一项升级、备份或回滚正在运行' >&2; exit 1; }
+flock -n 9 || { echo 'An upgrade, backup, or rollback is already running.' >&2; exit 1; }
 active=0
 systemctl is-active --quiet x-tikz-bench.service && active=1
 if [[ ${1:-} == backup ]]; then
@@ -17,13 +17,13 @@ if [[ ${1:-} == backup ]]; then
   sqlite3 "$database" ".backup '$destination'"
   chown "$owner" "$destination"
   chmod 0600 "$destination"
-  echo "数据库已备份到：$destination"
+  echo "Database backed up to: $destination"
   exit 0
 fi
 [[ ${1:-} == rollback ]] || exit 2
 current=$(readlink -f /opt/x-tikz-bench/current)
 previous=$(readlink -f /opt/x-tikz-bench/previous)
-[[ "$previous" == /opt/x-tikz-bench/releases/* && -f "$previous/apps/server/dist/index.js" && "$current" != "$previous" ]] || { echo '没有可回滚的上一版' >&2; exit 1; }
+[[ "$previous" == /opt/x-tikz-bench/releases/* && -f "$previous/apps/server/dist/index.js" && "$current" != "$previous" ]] || { echo 'No previous release is available.' >&2; exit 1; }
 success=0
 restore() {
   code=$?
@@ -46,8 +46,8 @@ for attempt in {1..30}; do
   if systemctl is-active --quiet x-tikz-bench.service && curl --fail --silent --max-time 2 "http://127.0.0.1:$port/api/health" | grep -q '"ok":true'; then healthy=1; break; fi
   sleep 1
 done
-[[ $healthy == 1 ]] || { echo '回滚版本启动失败，恢复当前版本' >&2; exit 1; }
+[[ $healthy == 1 ]] || { echo 'The previous release failed to start. Restoring the current release.' >&2; exit 1; }
 ln -sfn "$current" /opt/x-tikz-bench/previous
 [[ $active == 1 ]] || systemctl stop x-tikz-bench.service
 success=1
-echo '已回滚程序；项目数据库保持不变。'
+echo 'Rolled back the program and preserved the project database.'

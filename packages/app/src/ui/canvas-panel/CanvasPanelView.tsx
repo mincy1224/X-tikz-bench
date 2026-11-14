@@ -2,6 +2,7 @@ import { useFormatPainter } from "../format-painter";
 import {
   useEffect,
   useState,
+  type CSSProperties,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -92,6 +93,7 @@ type CanvasPanelViewProps = {
   svgModel: SvgRenderModel | null;
   svgLayerHostRef: RefObject<HTMLDivElement | null>;
   canvasTransform: CanvasTransform;
+  onCanvasScroll: (transform: CanvasTransform) => void;
   showTransparencyGrid: boolean;
   showDocumentBounds: boolean;
   svgDiffHints: SvgDiffHints | undefined;
@@ -223,6 +225,7 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
     svgModel,
     svgLayerHostRef,
     canvasTransform,
+    onCanvasScroll,
     showTransparencyGrid,
     showDocumentBounds,
     svgDiffHints,
@@ -382,6 +385,19 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
   }, [shouldBlinkTextCaret, textCaretBlinkKey]);
 
   const painting = useFormatPainter((state) => Boolean(state.snapshot));
+  const scrollbars = svgResult && showDocumentBounds ? (["x", "y"] as const).map((axis) => {
+    const horizontal = axis === "x";
+    const visible = horizontal ? viewportSize.width : viewportSize.height;
+    const extent = (horizontal ? svgResult.viewBox.width : svgResult.viewBox.height) * canvasTransform.scale;
+    if (visible <= 0 || extent <= visible + 1) return null;
+    const key = horizontal ? "translateX" : "translateY";
+    const maximum = Math.ceil(extent - visible);
+    return <input key={axis} type="range" className={horizontal ? css.canvasScrollX : css.canvasScrollY}
+      aria-label={horizontal ? "水平滚动画布" : "垂直滚动画布"}
+      style={{ "--canvas-scroll-thumb": `${Math.max(24, (visible - 22) * visible / extent)}px` } as CSSProperties}
+      min={0} max={maximum} value={Math.min(maximum, Math.max(0, -canvasTransform[key]))}
+      onChange={(event) => { onCanvasScroll({ ...canvasTransform, [key]: -event.currentTarget.valueAsNumber }); }} />;
+  }) : null;
   return (
     <div className={css.panel}>
       <div className={[css.canvasGrid, showRulers ? "" : css.canvasGridNoRulers].filter(Boolean).join(" ")}>
@@ -1030,6 +1046,7 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
             </div>
           )}
         </div>
+        {scrollbars}
       </div>
     </div>
   );

@@ -215,6 +215,9 @@ export function createSemanticEvaluationRun(
     { rng: context.mathRandom },
     () => expandForeachFigure(figure, source, opts.maxForeachExpansions ?? 10_000)
   );
+  for (const [name, value] of Object.entries(opts.projectColors ?? {})) {
+    writeContextColorAlias(context, name, value);
+  }
   const prePictureContextStatements = expanded.figureBody.filter((statement) =>
     isPrePictureContextStatement(statement, figure, expanded.statementAttribution, expanded.statementSourceMaps)
   );

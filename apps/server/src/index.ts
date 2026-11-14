@@ -5,7 +5,7 @@ import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError } from "./latex/compiler.js";
 import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, softDeleteProject, storeProjectPng, updateProject } from "./projects/store.js";
 import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
-import { splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
+import { PROJECT_PALETTE_BLOCK, splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
 import { importProjectArchive } from "./projects/import-archive.js";
 import { strToU8, zipSync, type Zippable } from "fflate";
 import { checkTexPackages, compileTextBatch, validateTexTextBatch } from "./latex/text.js";
@@ -151,14 +151,19 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       return;
     }
     if (projectMatch && request.method === "PATCH") {
-      const payload = JSON.parse(await body(request, config.maxSourceBytes + 32_768)) as { name?: unknown; description?: unknown; source?: unknown; expectedRevision?: unknown; thumbnailSvg?: unknown };
+      const payload = JSON.parse(await body(request, config.maxSourceBytes + 32_768)) as { name?: unknown; description?: unknown; source?: unknown; palette?: unknown; expectedRevision?: unknown; thumbnailSvg?: unknown };
       if (payload.source !== undefined && (typeof payload.source !== "string" || Buffer.byteLength(payload.source, "utf8") > config.maxSourceBytes)) {
         json(response, 413, { error: "Invalid or oversized source." }); return;
+      }
+      if (payload.palette !== undefined && (typeof payload.palette !== "string" || payload.palette.length > config.maxSourceBytes ||
+        (payload.palette !== "" && PROJECT_PALETTE_BLOCK.exec(payload.palette)?.[0] !== payload.palette))) {
+        json(response, 400, { error: "无效的项目配色盘。" }); return;
       }
       const result = await updateProject(config, projectMatch[1] ?? "", {
         name: typeof payload.name === "string" ? payload.name : undefined,
         description: typeof payload.description === "string" ? payload.description : undefined,
         source: typeof payload.source === "string" ? payload.source : undefined,
+        palette: typeof payload.palette === "string" ? payload.palette : undefined,
         expectedRevision: typeof payload.expectedRevision === "number" ? payload.expectedRevision : undefined,
         thumbnailSvg: typeof payload.thumbnailSvg === "string" ? payload.thumbnailSvg : undefined
       }, canvasId);
@@ -177,7 +182,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       if (!project || project.deletedAt) { json(response, 404, { error: "Project not found." }); return; }
       const draft = request.method === "POST" ? JSON.parse(await body(request, config.maxSourceBytes + 16_384)) as { source?: unknown } : null;
       if (draft && (typeof draft.source !== "string" || Buffer.byteLength(draft.source, "utf8") > config.maxSourceBytes)) { json(response, 413, { error: "Invalid or oversized source." }); return; }
-      const exportSource = draft ? draft.source as string : project.source;
+      const source = draft ? draft.source as string : project.source;
+      const exportSource = project.palette && !PROJECT_PALETTE_BLOCK.test(source) ? project.palette.trimEnd() + "\n" + source : source;
       if (exportMatch[2] === "tex") {
         try {
           const pngs = await getAllProjectAssets(config, project.id);

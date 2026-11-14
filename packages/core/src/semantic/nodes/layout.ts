@@ -149,12 +149,29 @@ export function resolveNodeLayout(
     let fontStyle = style.fontStyle;
     let fontWeight = style.fontWeight;
     for (;;) {
-      const wrapper = /^\\(textit|textbf|textnormal|textup|textmd)\s*\{/u.exec(candidate);
+      const declaration = /^\\(itshape|slshape|upshape|bfseries|mdseries|normalfont|it|sl|bf)(?![a-zA-Z@])\s*/u.exec(candidate);
+      if (declaration) {
+        const command = declaration[1];
+        if (/^(?:it|sl)(?:shape)?$/u.test(command)) fontStyle = "italic";
+        if (command === "upshape" || command === "normalfont") fontStyle = "normal";
+        if (command === "bf" || command === "bfseries") fontWeight = "bold";
+        if (command === "mdseries" || command === "normalfont") fontWeight = "normal";
+        candidate = candidate.slice(declaration[0].length);
+        continue;
+      }
+      const wrapper = /^\\(textit|textsl|emph|textbf|textnormal|textup|textmd)\s*\{/u.exec(candidate);
+      if (candidate.startsWith("{")) {
+        const group = readTexGroup(candidate, 0);
+        if (group?.end !== candidate.length) break;
+        candidate = group.text;
+        continue;
+      }
       if (!wrapper) break;
       const command = wrapper[1];
       const group = readTexGroup(candidate, wrapper[0].length - 1);
       if (group?.end !== candidate.length) break;
-      if (command === "textit") fontStyle = "italic";
+      if (command === "textit" || command === "textsl") fontStyle = "italic";
+      if (command === "emph") fontStyle = fontStyle === "italic" ? "normal" : "italic";
       if (command === "textbf") fontWeight = "bold";
       if (command === "textup" || command === "textnormal") fontStyle = "normal";
       if (command === "textmd" || command === "textnormal") fontWeight = "normal";

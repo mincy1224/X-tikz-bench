@@ -13,11 +13,16 @@ export function withoutProjectFontBlock(source: string): string {
 
 export const PROJECT_PALETTE_BLOCK = /^% x-tikz-bench: palette start\r?\n([\s\S]*?)^% x-tikz-bench: palette end(?:\r?\n|$)/mu;
 
-export function withProjectPalette(source: string, palette: string): string {
-  const body = source.replace(PROJECT_PALETTE_BLOCK, "");
-  if (!palette) return body;
-  const picture = splitProjectSource(body);
-  return picture ? `${picture.prefix}\n${palette.trimEnd()}\n${picture.body}\n${picture.suffix}` : `${palette.trimEnd()}\n${body}`;
+export function withoutProjectPalette(source: string): string {
+  return source.replace(new RegExp(PROJECT_PALETTE_BLOCK.source, "gmu"), "");
+}
+
+export function projectPaletteColors(palette: string): Readonly<Record<string, string>> {
+  const definitions = PROJECT_PALETTE_BLOCK.exec(palette)?.[1] ?? "";
+  return Object.fromEntries(Array.from(
+    definitions.matchAll(/^\\definecolor\{([a-z][a-z0-9]*-[a-z][a-z0-9]*)\}\{HTML\}\{([0-9a-f]{6})\}\s*$/gimu),
+    ([, name, hex]) => [name, `#${hex}`]
+  ));
 }
 
 /** Split a single picture at its real environment boundaries. */

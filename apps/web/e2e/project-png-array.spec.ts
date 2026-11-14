@@ -149,19 +149,33 @@ test("blank row vector cells accept text and move through the row with Tab", asy
   await expect(matrix.getByRole("spinbutton", { name: /格宽/ })).toBeVisible();
 });
 
-test("editing a named project color updates every object that references it", async ({ page }) => {
+test("editing a named project color updates every object without editing canvas source", async ({ page, request }) => {
   await gotoApp(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "配色盘" }).click();
   await page.getByLabel("颜色名").fill("accent");
   await page.getByRole("button", { name: "添加颜色" }).click();
-  await expect.poll(() => readSource(page)).toContain("\\definecolor{theme-accent}{HTML}{4656B8}");
-  await setSource(page, (await readSource(page)) + String.raw`\fill[theme-accent] (0,0) rectangle (1,1);
+  const copyColor = page.getByRole("button", { name: "复制 theme-accent" });
+  await copyColor.hover();
+  await copyColor.click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("theme-accent");
+  await setSource(page, String.raw`\fill[theme-accent] (0,0) rectangle (1,1);
 \fill[theme-accent] (2,0) rectangle (3,1);`);
   const layer = page.getByTestId("canvas-svg-layer");
   await expect(layer.locator('[fill="#4656b8" i]')).toHaveCount(2);
   await page.getByLabel("修改 theme-accent").fill("#123456");
   await expect(layer.locator('[fill="#123456"]')).toHaveCount(2);
-  await expect.poll(() => readSource(page)).toContain("\\fill[theme-accent]");
+  const source = await readSource(page);
+  expect(source).toContain("\\fill[theme-accent]");
+  expect(source).not.toContain("definecolor");
+  const url = new URL(page.url()).pathname;
+  const response = await request.post(`/api${url.replace("/project/", "/projects/")}/export/tex`, { data: { source } });
+  expect(response.ok()).toBeTruthy();
+  const archive = unzipSync(await response.body());
+  const main = strFromU8(archive["main.tex"]);
+  expect(main.indexOf("\\definecolor{theme-accent}{HTML}{123456}")).toBeGreaterThanOrEqual(0);
+  expect(main.indexOf("\\definecolor")).toBeLessThan(main.indexOf("\\begin{document}"));
+  expect(strFromU8(archive["figure.tikz"]).trim()).toBe(source.trim());
 });
 
 test("named canvases keep different drawings and share the project palette and assets", async ({ page, request }) => {
@@ -179,19 +193,21 @@ test("named canvases keep different drawings and share the project palette and a
   await page.getByRole("button", { name: "配色盘" }).click();
   await page.getByLabel("颜色名").fill("accent");
   await page.getByRole("button", { name: "添加颜色" }).click();
-  await expect.poll(() => readSource(page)).toContain("theme-accent");
-  await setSource(page, (await readSource(page)) + String.raw`\fill[theme-accent] (0,0) circle (1);`);
+  await expect(page.getByRole("button", { name: "复制 theme-accent" })).toBeVisible();
+  await setSource(page, String.raw`\fill[theme-accent] (0,0) circle (1);`);
   await page.getByRole("button", { name: "素材", exact: true }).click();
   await expect(page.getByRole("button", { name: "放置 shared.png" })).toBeVisible();
   await page.getByRole("button", { name: "画布 1", exact: true }).click();
   await page.waitForURL((url) => url.pathname === firstUrl);
   await expect.poll(() => readSource(page)).toContain("\\draw (0,0) -- (1,1);");
-  expect(await readSource(page)).toContain("theme-accent");
+  expect(await readSource(page)).not.toContain("theme-accent");
   expect(await readSource(page)).not.toContain("circle");
   const { project } = await (await request.get(api)).json();
   expect(project.canvases).toHaveLength(2);
+  expect(project.palette).toContain("theme-accent");
   const { project: second } = await (await request.get(`${api}?canvas=${project.canvases[1].id}`)).json();
   expect(second.source).toContain("\\fill[theme-accent]");
+  expect(second.source).not.toContain("definecolor");
   expect(second.source).not.toContain("\\draw");
   await page.getByRole("button", { name: "重命名画布" }).click();
   await page.getByLabel("画布名称").fill("概览");
@@ -205,7 +221,9 @@ test("the canvas defaults to Times New Roman with native italic and bold italic"
   await gotoApp(page);
   await setSource(page, String.raw`\node at (0,0) {Regular};
 \node[font=\itshape] at (0,1) {Italic};
-\node at (0,2) {\textbf{\textit{Bold italic}}};`);
+\node at (0,2) {\textbf{\textit{Bold italic}}};
+\node at (0,3) {{\itshape Declaration}};
+\node at (0,4) {\emph{Emphasis}};`);
   const layer = page.getByTestId("canvas-svg-layer");
   const text = layer.locator("text");
   await expect(text.filter({ hasText: /^Regular$/u })).toHaveCSS("font-family", /Times New Roman/u);
@@ -213,13 +231,43 @@ test("the canvas defaults to Times New Roman with native italic and bold italic"
   const boldItalic = text.filter({ hasText: /^Bold italic$/u });
   await expect(boldItalic).toHaveCSS("font-style", "italic");
   await expect(boldItalic).toHaveCSS("font-weight", "700");
+  await expect(text.filter({ hasText: /^Declaration$/u })).toHaveCSS("font-style", "italic");
+  await expect(text.filter({ hasText: /^Emphasis$/u })).toHaveCSS("font-style", "italic");
+});
+
+test("oversized canvases pan with both scrollbars", async ({ page }) => {
+  await gotoApp(page);
+  await setSource(page, String.raw`\draw (0,0) rectangle (80,80);`);
+  await page.getByTestId("canvas-viewport").hover();
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -1600);
+  await page.keyboard.up("Control");
+  const horizontal = page.getByRole("slider", { name: "水平滚动画布" });
+  const vertical = page.getByRole("slider", { name: "垂直滚动画布" });
+  const stage = page.getByTestId("canvas-world-stage");
+  await expect(horizontal).toBeVisible();
+  await expect(vertical).toBeVisible();
+  await horizontal.focus();
+  await page.keyboard.press("End");
+  const maxX = Number(await horizontal.getAttribute("max"));
+  await expect(stage).toHaveAttribute("data-canvas-translate-x", String(-maxX));
+  await vertical.focus();
+  await page.keyboard.press("End");
+  const maxY = Number(await vertical.getAttribute("max"));
+  await expect(stage).toHaveAttribute("data-canvas-translate-y", String(-maxY));
 });
 
 test("the dashboard searches projects and restores them from trash", async ({ page, request }) => {
   const name = `Dashboard ${Date.now()}`;
   const result = await request.post("/api/projects", { data: { name, description: "distinctive search text" } });
   expect(result.status()).toBe(201);
+  await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto("/");
+  const content = await page.getByRole("searchbox", { name: "搜索项目" }).locator("..").boundingBox();
+  const sidebar = await page.getByRole("complementary").boundingBox();
+  expect(content).not.toBeNull();
+  expect(sidebar).not.toBeNull();
+  expect(Math.abs(content!.x + content!.width / 2 - (1920 + sidebar!.width) / 2)).toBeLessThan(2);
   await page.getByRole("searchbox", { name: "搜索项目" }).fill("distinctive search text");
   const link = page.getByRole("link", { name, exact: true });
   await expect(link).toBeVisible();

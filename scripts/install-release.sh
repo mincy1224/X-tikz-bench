@@ -6,28 +6,28 @@ if [[ ! -f "$source_dir/manifest.json" ]]; then source_dir=$(CDPATH= cd -- "$sou
 tex_dir=${TIKZ_TEX_BIN_DIR:-}
 if [[ -z "$tex_dir" ]] && command -v latex >/dev/null; then tex_dir=$(dirname "$(command -v latex)"); fi
 if [[ $EUID -ne 0 ]]; then exec sudo env TIKZ_TEX_BIN_DIR="$tex_dir" TIKZ_INSTALL_DATABASE="${TIKZ_INSTALL_DATABASE:-}" bash "$source_dir/install.sh"; fi
-[[ -f "$source_dir/SHA256SUMS" && -f "$source_dir/manifest.json" ]] || { echo '安装包缺少版本清单或校验文件' >&2; exit 1; }
+[[ -f "$source_dir/SHA256SUMS" && -f "$source_dir/manifest.json" ]] || { echo 'The release is missing its manifest or checksums.' >&2; exit 1; }
 (cd "$source_dir" && sha256sum --strict --check SHA256SUMS >/dev/null)
-command -v systemctl >/dev/null || { echo '需要启用 systemd' >&2; exit 1; }
-[[ $(ps -p 1 -o comm=) == systemd ]] || { echo 'systemd 未运行，请先在 WSL 中启用它' >&2; exit 1; }
+command -v systemctl >/dev/null || { echo 'systemd is required.' >&2; exit 1; }
+[[ $(ps -p 1 -o comm=) == systemd ]] || { echo 'systemd is not running. Enable it first on WSL.' >&2; exit 1; }
 missing=()
 for pair in 'node:nodejs' 'sqlite3:sqlite3' 'curl:curl' 'flock:util-linux' 'fc-list:fontconfig'; do
   command -v "${pair%%:*}" >/dev/null || missing+=("${pair#*:}")
 done
 if ((${#missing[@]})); then apt-get update; apt-get install -y "${missing[@]}"; fi
-node -e 'if(Number(process.versions.node.split(".")[0])<18)process.exit(1)' || { echo '需要 Node.js 18 或更高版本' >&2; exit 1; }
+node -e 'if(Number(process.versions.node.split(".")[0])<18)process.exit(1)' || { echo 'Node.js 18 or newer is required.' >&2; exit 1; }
 version=$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(m.schema!==1||!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(m.version))process.exit(1);process.stdout.write(m.version)' "$source_dir/manifest.json")
 install -d -m 0755 /opt/x-tikz-bench/releases /var/backups/x-tikz-bench /run/lock
 exec 9>/run/lock/x-tikz-bench-upgrade.lock
-flock -n 9 || { echo '另一项升级或回滚正在运行' >&2; exit 1; }
+flock -n 9 || { echo 'An upgrade or rollback is already running.' >&2; exit 1; }
 if [[ -z "$tex_dir" || ! -x "$tex_dir/xelatex" ]]; then
   tex_dir=$(find /usr/local/texlive -maxdepth 4 -type f -name dvisvgm 2>/dev/null | sort -Vr | head -n 1 | xargs -r dirname)
 fi
-[[ -x "$tex_dir/latex" && -x "$tex_dir/xelatex" ]] || { echo '未找到现有 TeX Live；用 TIKZ_TEX_BIN_DIR 指定其 bin 目录。不会自动安装 TeX。' >&2; exit 1; }
+[[ -x "$tex_dir/latex" && -x "$tex_dir/xelatex" ]] || { echo 'TeX Live was not found. Set TIKZ_TEX_BIN_DIR to the bin directory of an existing installation.' >&2; exit 1; }
 if ! fc-list :lang=zh | grep -q .; then apt-get update; apt-get install -y fonts-noto-cjk; fi
 release=/opt/x-tikz-bench/releases/$version
 if [[ -d "$release" ]]; then
-  cmp "$source_dir/SHA256SUMS" "$release/SHA256SUMS" || { echo '同版本安装内容不同，请使用新版本号' >&2; exit 1; }
+  cmp "$source_dir/SHA256SUMS" "$release/SHA256SUMS" || { echo 'A different release already uses this version number. Use a new version.' >&2; exit 1; }
 else
   stage=$(mktemp -d /opt/x-tikz-bench/releases/.staging-XXXXXX)
   cp -a "$source_dir/." "$stage/"
@@ -62,7 +62,7 @@ switched=0; success=0
 restore() {
   code=$?
   if [[ $success == 0 ]]; then
-    echo '安装未通过验证，正在恢复旧程序与配置。' >&2
+    echo 'Installation verification failed. Restoring the previous program and configuration.' >&2
     systemctl stop x-tikz-bench.service || true
     if [[ -n "$old" && -d "$old" ]]; then
       ln -sfn "$old" /opt/x-tikz-bench/.current-restore
@@ -86,7 +86,7 @@ previous_database=$(sed -n 's/^TIKZ_DATABASE_PATH=//p' /etc/default/x-tikz-bench
 previous_database=${previous_database%\"}; previous_database=${previous_database#\"}
 previous_database=${previous_database:-/var/lib/x-tikz-bench/x-tikz-bench.sqlite}
 if [[ -n "${TIKZ_INSTALL_DATABASE:-}" ]]; then
-  [[ "$TIKZ_INSTALL_DATABASE" == /var/lib/x-tikz-bench/*.sqlite && "$TIKZ_INSTALL_DATABASE" != *'..'* && "$TIKZ_INSTALL_DATABASE" != *$'\n'* && "$TIKZ_INSTALL_DATABASE" != *'"'* ]] || { echo '无效数据库路径'; exit 1; }
+  [[ "$TIKZ_INSTALL_DATABASE" == /var/lib/x-tikz-bench/*.sqlite && "$TIKZ_INSTALL_DATABASE" != *'..'* && "$TIKZ_INSTALL_DATABASE" != *$'\n'* && "$TIKZ_INSTALL_DATABASE" != *'"'* ]] || { echo 'Invalid database path.'; exit 1; }
   sed -i '/^TIKZ_DATABASE_PATH=/d' /etc/default/x-tikz-bench
   printf '\nTIKZ_DATABASE_PATH="%s"\n' "$TIKZ_INSTALL_DATABASE" >> /etc/default/x-tikz-bench
 fi
@@ -119,7 +119,7 @@ for attempt in {1..30}; do
   if systemctl is-active --quiet x-tikz-bench.service && curl --fail --silent --max-time 2 "http://127.0.0.1:$port/api/health" | grep -q '"ok":true'; then healthy=1; break; fi
   sleep 1
 done
-[[ $healthy == 1 ]] || { echo '新版服务健康检查失败' >&2; exit 1; }
+[[ $healthy == 1 ]] || { echo 'The updated service failed its health check.' >&2; exit 1; }
 if [[ -n "$old" && "$old" != "$release" && -d "$old" ]]; then ln -sfn "$old" /opt/x-tikz-bench/previous; fi
 if [[ $active == 0 && -f "$backup/x-tikz-bench.service" ]]; then systemctl stop x-tikz-bench.service; fi
 if [[ $enabled == 0 && -f "$backup/x-tikz-bench.service" ]]; then systemctl disable x-tikz-bench.service >/dev/null; fi
@@ -131,4 +131,4 @@ while IFS= read -r -d '' candidate; do
     rm -rf -- "$candidate"
   fi
 done < <(find /opt/x-tikz-bench/releases -mindepth 1 -maxdepth 1 -type d -print0)
-echo "X-TikZ Bench $version 安装成功；配置和项目数据已保留。备份：$backup"
+echo "Installed X-TikZ Bench $version. Configuration and project data were preserved. Backup: $backup"

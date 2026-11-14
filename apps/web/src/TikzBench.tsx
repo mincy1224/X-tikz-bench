@@ -5,7 +5,7 @@ import css from "./TikzBench.module.css";
 import { ProjectDialog } from "./ProjectDialog";
 import { CoalescingSaveQueue } from "./coalescing-save-queue";
 import { TexProof } from "./TexProof";
-import { splitProjectSource, withoutProjectFontBlock } from "tikz-editor/tex/project-source";
+import { splitProjectSource, withoutProjectFontBlock, withoutProjectPalette } from "tikz-editor/tex/project-source";
 import type { ProjectAsset } from "@tikz-editor/app";
 
 type Project = {
@@ -13,6 +13,7 @@ type Project = {
   name: string;
   description: string;
   source: string;
+  palette?: string;
   revision: number;
   thumbnailSvg: string | null;
   createdAt: string;
@@ -151,9 +152,12 @@ function ProjectHome() {
   );
 }
 
+type ProjectPatch = { source?: string; palette?: string; name?: string; description?: string; thumbnailSvg?: string };
+
 function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [draftSource, setDraftSource] = useState("");
+  const palette = project?.palette ?? "";
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error" | "conflict">("saved");
   const [showSaveHint, setShowSaveHint] = useState(false);
   const revisionRef = useRef(0);
@@ -173,17 +177,18 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     const template = sourceTemplate.current;
     return !template || /\\begin\{tikzpicture\*?\}/u.test(body) ? body : `${template.prefix}\n${body}\n${template.suffix}`;
   }, []);
+  const withPalette = useCallback((source: string) => palette ? palette.trimEnd() + "\n" + source : source, [palette]);
   const compileSource = useCallback((source: string) => {
     const template = sourceTemplate.current;
-    if (!template || /\\begin\{document\}/u.test(source)) return source;
+    if (!template || /\\begin\{document\}/u.test(source)) return withPalette(source);
     const instrumented = splitProjectSource(source);
-    if (!instrumented) return fullSource(source);
+    if (!instrumented) return withPalette(fullSource(source));
     const getPictureStart = (prefix: string) => prefix.lastIndexOf("\\begin{tikzpicture");
     const offset = getPictureStart(template.prefix);
     const additions = instrumented.prefix.slice(0, getPictureStart(instrumented.prefix));
-    return `${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`;
-  }, [fullSource]);
-  const saveQueue = useMemo(() => new CoalescingSaveQueue<{ source?: string; name?: string; description?: string; thumbnailSvg?: string }, Project>(async (patch) => {
+    return withPalette(`${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`);
+  }, [fullSource, withPalette]);
+  const saveQueue = useMemo(() => new CoalescingSaveQueue<ProjectPatch, Project>(async (patch) => {
       const { project: saved } = await api<{ project: Project }>(projectUrl, {
         method: "PATCH", headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...patch, source: patch.source === undefined ? undefined : fullSource(patch.source), expectedRevision: revisionRef.current })
@@ -194,7 +199,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
       setProject(editable);
       return editable;
   }), [fullSource, projectUrl]);
-  const persist = useCallback((patch: { source?: string; name?: string; description?: string; thumbnailSvg?: string }) => {
+  const persist = useCallback((patch: ProjectPatch) => {
     setSaveStatus("saving");
     const task = saveQueue.enqueue(patch);
     void task.then((saved) => {
@@ -205,7 +210,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
 
   useEffect(() => {
     void api<{ project: Project }>(projectUrl).then(({ project: loaded }) => {
-      const loadedSource = withoutProjectFontBlock(loaded.source);
+      const loadedSource = withoutProjectPalette(withoutProjectFontBlock(loaded.source));
       sourceTemplate.current = splitProjectSource(loadedSource);
       const source = sourceTemplate.current?.body ?? loadedSource;
       setProject({ ...loaded, source }); setDraftSource(source); revisionRef.current = loaded.revision;
@@ -240,7 +245,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
 
   const download = useCallback(async (kind: "tex" | "svg" | "pdf", capturedSource = draftRef.current) => {
     const response = await fetch(`/api/projects/${id}/export/${kind}?canvas=${canvasId}`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source: fullSource(capturedSource) })
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source: withPalette(fullSource(capturedSource)) })
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({})) as { error?: string };
@@ -256,7 +261,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     anchor.download = `${canvasId === "main" || !canvasName ? name : `${name}-${canvasName}`}.${blob.type === "application/zip" ? "zip" : kind}`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [canvasId, fullSource, id, project?.canvases, project?.name]);
+  }, [canvasId, fullSource, id, project?.canvases, project?.name, withPalette]);
 
   const rename = useCallback(() => { setEditInfo(true); }, []);
 
@@ -279,10 +284,11 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     id: project.id, name: project.name, source: project.source, saveStatus,
     onBack: leaveProject, onRename: rename, onSourceChange: setDraftSource,
     onSaveShortcut,
-    onShowTexProof: () => { setShowTexProof(true); }, compileSource,
+    onShowTexProof: () => { setShowTexProof(true); }, compileSource, palette,
+    onPaletteChange: async (next: string) => { await persist({ palette: next }); },
     assets, onUploadAsset: uploadAsset,
     onDownloadTex: () => { void download("tex"); }
-  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, project, rename, saveStatus, uploadAsset]);
+  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, palette, persist, project, rename, saveStatus, uploadAsset]);
 
   async function switchCanvas(target: string) {
     if (switchingCanvas) return;
@@ -328,10 +334,10 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
       name={canvasAction === "rename" ? project?.canvases?.find((canvas) => canvas.id === canvasId)?.name : ""}
       onSubmit={saveCanvasName} onClose={() => { setCanvasAction(null); }} />}
     {showTexProof ? <TexProof projectId={id} canvasName={project?.canvases?.find((canvas) => canvas.id === canvasId)?.name}
-      source={fullSource(draftSource)} onClose={() => { setShowTexProof(false); }} /> : null}
+      source={withPalette(fullSource(draftSource))} onClose={() => { setShowTexProof(false); }} /> : null}
     {editInfo && project ? <ProjectDialog name={project.name} description={project.description} onClose={() => { setEditInfo(false); }} onSubmit={async (name, description) => { await persist({ name, description }); }} /> : null}
     {saveCopy && project ? <ProjectDialog name={`${project.name} draft`} description={project.description} onClose={() => { setSaveCopy(false); }} onSubmit={async (name, description) => {
-    const response = await api<{ project: Project }>("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description, source: fullSource(draftRef.current), copyFrom: id }) });
+    const response = await api<{ project: Project }>("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description, source: withPalette(fullSource(draftRef.current)), copyFrom: id }) });
       navigate(`/project/${response.project.id}`);
     }} /> : null}
     {saveStatus === "error" || saveStatus === "conflict" ? <aside className={css.saveHint} role="alert"><span>{saveStatus === "conflict" ? "其他窗口已更新项目，请另存草稿以保留双方内容。" : "草稿未保存"}</span><button type="button" onClick={() => { setSaveCopy(true); }}>另存草稿</button>{saveStatus === "error" ? <button type="button" onClick={() => { setSaveStatus("saving"); void persist({ source: draftRef.current }).catch(() => {}); }}>重试</button> : null}<button type="button" onClick={() => { void download("tex"); }}>下载草稿</button></aside> : null}

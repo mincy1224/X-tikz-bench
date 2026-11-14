@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
 import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
-import { DEFAULT_PROJECT_FONT, withoutProjectFontBlock } from "../../../../packages/core/src/tex/project-source.js";
+import { DEFAULT_PROJECT_FONT, PROJECT_PALETTE_BLOCK, withoutProjectFontBlock, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
 
 export type LatexDiagnostic = { file: string; line: number; message: string };
 export type CompileResult = { svg: string; log: string; diagnostics: LatexDiagnostic[]; markers: ObjectMarker[] };
@@ -186,6 +186,12 @@ export async function compileLatex(source: string, config: ServerConfig, request
 }
 
 export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto", projectDefaults = false): string {
+  const palette = projectDefaults ? PROJECT_PALETTE_BLOCK.exec(source)?.[0] : undefined;
+  if (palette) {
+    const document = createStandaloneDocument(withoutProjectPalette(source), requestedProfile, projectDefaults);
+    const { insertionOffset } = extractTexEnvironment(document);
+    return document.slice(0, insertionOffset) + "\n" + palette.trimEnd() + "\n" + document.slice(insertionOffset);
+  }
   if (projectDefaults) source = withoutProjectFontBlock(source);
   const environment = extractTexEnvironment(source);
   const explicit = new Set(environment.packages.map((item) => item.name));
