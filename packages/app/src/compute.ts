@@ -77,6 +77,7 @@ export type ComputeRequest = {
   trigger?: IncrementalSemanticTrigger;
   kind?: "render" | "prewarm";
   renderViewBox?: SvgViewBox | null;
+  preferNativeSerif?: boolean;
 };
 
 export type ComputeResponse = {
@@ -160,7 +161,8 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
         trigger,
         sourceFingerprint,
         request.renderViewBox ?? null,
-        request.documentId ?? "default"
+        request.documentId ?? "default",
+        request.preferNativeSerif
       );
       const snapshot: SessionSnapshot = {
         source: request.source,
@@ -220,7 +222,8 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
     const phases: Record<string, number> = {};
     let phaseStartedAt = performance.now();
     const maybeTextEngine = getOptionalTextEngine(extractTexEnvironment(request.source), request.documentId);
-    const textEngine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
+    const engine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
+    const textEngine = engine && request.preferNativeSerif ? { ...engine, preferNativeSerif: true } : engine;
     phases.textEngine = performance.now() - phaseStartedAt;
     phaseStartedAt = performance.now();
     const result = await renderTikzToSvgAsync(request.source, {
@@ -330,7 +333,8 @@ async function computeSnapshotIncremental(
   trigger: Extract<IncrementalSemanticTrigger, "drag-element" | "drag-handle">,
   sourceFingerprint: string | undefined,
   renderViewBox: SvgViewBox | null,
-  documentId: string
+  documentId: string,
+  preferNativeSerif?: boolean
 ): Promise<{
   parse: ParseTikzResult;
   semantic: EvaluateTikzResult;
@@ -343,7 +347,8 @@ async function computeSnapshotIncremental(
   const phases: Record<string, number> = {};
   let phaseStartedAt = performance.now();
   const maybeTextEngine = getOptionalTextEngine(extractTexEnvironment(source), documentId);
-  const textEngine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
+  const engine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
+  const textEngine = engine && preferNativeSerif ? { ...engine, preferNativeSerif: true } : engine;
   phases.textEngine = performance.now() - phaseStartedAt;
   phaseStartedAt = performance.now();
   const parseSession = getIncrementalParseSession();

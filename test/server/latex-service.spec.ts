@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../apps/server/src/config";
-import { assertSafeSvg, parseLatexDiagnostics, resolveCompileProfile } from "../../apps/server/src/latex/compiler";
+import { assertSafeSvg, createStandaloneDocument, parseLatexDiagnostics, resolveCompileProfile } from "../../apps/server/src/latex/compiler";
 
 const originalEnv = { ...process.env };
 
@@ -59,6 +59,12 @@ describe("server-side SVG safety gate", () => {
 });
 
 describe("LaTeX diagnostics", () => {
+  it("reports a wrapped error from a package file", () => {
+    const prefix = "/usr/local/texlive/2026/texmf-dist/tex/latex/amsfonts/amssymb.sty:261: LaTeX Er";
+    expect(parseLatexDiagnostics(prefix + "\nror: Command \\Bbbk already defined.")).toEqual([
+      { file: "amssymb.sty", line: 261, message: "LaTeX Error: Command \\Bbbk already defined." }
+    ]);
+  });
   it("extracts file-line-error output without exposing paths", () => {
     expect(parseLatexDiagnostics("/tmp/private/input.tex:12: Undefined control sequence.")).toEqual([
       { file: "input.tex", line: 12, message: "Undefined control sequence." }
@@ -72,4 +78,14 @@ describe("LaTeX diagnostics", () => {
       "l.8 \\begin{document}"
     ].join("\n"))[0]?.message).toBe('Package fontspec Error: The font "Missing Font" cannot be found.');
   });
+});
+
+it("adds the project text font without overriding newtxmath or an explicit main font", () => {
+  const source = String.raw`\usepackage{newtxmath}
+\node at (0,0) {Test $x$};`;
+  const document = createStandaloneDocument(source, "xelatex", true);
+  expect(document).toContain("\\setmainfont{Times New Roman}");
+  expect(document).not.toContain("\\usepackage{amssymb}");
+  const custom = createStandaloneDocument("\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n" + source, "xelatex", true);
+  expect(custom).not.toContain("Times New Roman");
 });

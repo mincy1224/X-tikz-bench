@@ -334,7 +334,8 @@ export function useCanvasHandleInteractions(args: UseCanvasHandleInteractionsArg
           : ellipseAspectRatioForSource(snapshot.scene?.elements ?? [], sourceId) ?? frameAspectRatio,
         initialFrame,
         initialScopeTransform,
-        measurementMode: pathShapeHint === "rectangle" || sourceId.startsWith("scope:") ? "opposite-corner" : "center",
+        measurementMode: pathShapeHint === "rectangle" || sourceId.startsWith("scope:") ||
+          (propertyTarget.kind === "found" && propertyTarget.target.kind === "matrix-statement") ? "opposite-corner" : "center",
         preserveAspectDuringResize: isCircleResizeSource || proportionalPng,
         snapContext: snapshot.scene && !sourceId.startsWith("scope:") ? buildSnapContext({
           sceneElements: snapshot.scene.elements,

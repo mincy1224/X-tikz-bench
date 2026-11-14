@@ -41,6 +41,10 @@
 .projectObjectBar label { display: inline-flex; align-items: center; gap: 4px; }
 .projectObjectBar input { width: 66px; }
 .projectObjectBar input, .projectObjectBar button { color: var(--text); background: var(--bg-pane); border: 1px solid var(--border); border-radius: 4px; padding: 3px; }
+.projectPalette { padding: 6px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; max-height: 160px; overflow: auto; border-bottom: 1px solid var(--border); }
+.projectPalette fieldset, .projectPalette form, .projectPalette label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.projectPalette input:not([type="color"]) { width: 7em; }
+.projectPalette input[type="color"] { width: 26px; height: 24px; padding: 0; }
 
 .brandMark {
   display: grid;
@@ -78,7 +82,6 @@
 
 .projectBack { border-color: transparent; background: transparent; color: var(--text-muted); }
 .projectBack:hover, .projectExport:hover, .projectProof:hover { background: var(--btn-hover-bg); border-color: var(--accent-btn-border); }
-.projectExport[aria-pressed="true"] { background: var(--btn-hover-bg); border-color: var(--accent); color: var(--accent-dark); }
 .projectBack:active, .projectExport:active, .projectExportPrimary:active, .projectProof:active { transform: translateY(1px); }
 
 .projectProof { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); color: var(--accent-dark); }

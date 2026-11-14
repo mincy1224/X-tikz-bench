@@ -48,6 +48,18 @@ it("only snaps the resize edge under the pointer, with the usual modifier bypass
   expect(snapResizePosition({ ...input, modifiers: { ctrlOrMeta: true } })).toMatchObject({ snappedPoint: p(10, 15), lines: [] });
 });
 
+it("resizes every cell together while keeping the opposite array edge fixed", () => {
+  const added = edit("", { kind: "addElement", at: p(0, 0), template: { kind: "matrix", preset: "grid-empty", rows: 1, columns: 5 } });
+  const elementId = added.selectedSourceIds![0];
+  const resized = edit(added.newSource, { kind: "resizeElement", elementId, role: "right", newWorld: p(90, 0) });
+  expect(resized.newSource).toContain("minimum width=30pt");
+  const paths = renderTikzToSvg(resized.newSource).semantic.scene.elements;
+  expect(paths.filter((element) => element.matrixCell)).toHaveLength(5);
+  expect(paths.filter((element) => !element.matrixCell)).toHaveLength(1);
+  const shrunk = edit(resized.newSource, { kind: "resizeElement", elementId, role: "right", newWorld: p(15, 0) });
+  expect(shrunk.newSource).toContain("minimum width=15pt");
+});
+
 it("renders both delimiters of an inserted math matrix and retains the final TeX row break after editing", () => {
   const added = edit("", { kind: "addElement", at: p(0, 0), template: { kind: "matrix", preset: "math" } });
   expect(renderTikzToSvg(added.newSource).semantic.scene.elements.filter((element) => element.id.endsWith("-delimiter"))).toHaveLength(2);

@@ -46,6 +46,7 @@ export type NodeTextLayoutKind = "single-line" | "wrapped" | "explicit-multiline
 export type NodeTextRenderInfo =
   | {
       mode: "plain";
+      nativeSerif?: { fontStyle: NodeTextFontStyle; fontWeight: NodeTextFontWeight };
     }
   | {
       mode: "mathjax" | "tex";
@@ -57,6 +58,7 @@ export type NodeTextRenderInfo =
     };
 
 export type NodeTextEngine = {
+  preferNativeSerif?: boolean;
   validate(text: string): NodeTextValidationIssue | null;
   measure(request: NodeTextMeasureRequest): NodeTextMetrics | null;
   renderFromCache(cacheKey: string): NodeTextRenderPayload | null;

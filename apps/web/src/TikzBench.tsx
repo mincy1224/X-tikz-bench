@@ -4,8 +4,7 @@ import css from "./TikzBench.module.css";
 import { ProjectDialog } from "./ProjectDialog";
 import { CoalescingSaveQueue } from "./coalescing-save-queue";
 import { TexProof } from "./TexProof";
-import { splitProjectSource } from "tikz-editor/tex/project-source";
-import { extractTexEnvironment } from "tikz-editor/tex/environment";
+import { splitProjectSource, withoutProjectFontBlock } from "tikz-editor/tex/project-source";
 import type { ProjectAsset } from "@tikz-editor/app";
 
 type Project = {
@@ -18,18 +17,10 @@ type Project = {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  canvases?: { id: string; name: string }[];
 };
 
 const SAVE_HINT_DISABLED_KEY = "tikz-bench:hide-save-shortcut-hint";
-const PROJECT_FONT_BLOCK = /^% x-tikz-bench: font start\r?\n[\s\S]*?^% x-tikz-bench: font end\r?\n/mu;
-
-function applyTimesNewRoman(source: string): string {
-  const environment = extractTexEnvironment(source);
-  const loadFontspec = environment.packages.some(({ name }) => name === "fontspec") ? "" : "\\usepackage{fontspec}\n";
-  const setup = `% x-tikz-bench: font start\n${loadFontspec}\\setmainfont{Times New Roman}\n% x-tikz-bench: font end\n`;
-  const offset = environment.insertionOffset;
-  return source.slice(0, offset) + (offset && !source.slice(0, offset).endsWith("\n") ? "\n" : "") + setup + source.slice(offset);
-}
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -43,12 +34,6 @@ function navigate(path: string): void {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-function ProjectThumbnail({ project }: { project: Project }) {
-  return <div className={css.preview}>{project.thumbnailSvg
-    ? <img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(project.thumbnailSvg)} alt="" />
-    : <span>{project.source.split(/\r?\n/u).map((line) => line.trim()).find((line) => line.startsWith("\\draw") || line.startsWith("\\node") || line.startsWith("\\matrix")) ?? "\\begin{tikzpicture}"}</span>}</div>;
-}
-
 function ProjectHome() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,10 +41,14 @@ function ProjectHome() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [newProject, setNewProject] = useState<{ name: string; source?: string; archive?: File } | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [view, setView] = useState<"active" | "trash">("active");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"updated" | "name">("updated");
+  const [changing, setChanging] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
-    void api<{ projects: Project[] }>("/api/projects").then((result) => {
+    void api<{ projects: Project[] }>("/api/projects?deleted=1").then((result) => {
       setProjects(result.projects); setError(null);
     }).catch((error_: unknown) => { setError(error_ instanceof Error ? error_.message : String(error_)); })
       .finally(() => { setLoading(false); });
@@ -83,11 +72,30 @@ function ProjectHome() {
     });
     refresh();
   };
+  const activeCount = projects.filter((project) => !project.deletedAt).length;
+  const current = projects.filter((project) => Boolean(project.deletedAt) === (view === "trash"));
+  const keyword = query.trim().toLocaleLowerCase();
+  const visible = current.filter(({ name, description }) => `${name} ${description}`.toLocaleLowerCase().includes(keyword))
+    .sort((a, b) => sort === "name" ? a.name.localeCompare(b.name, "zh-CN", { numeric: true }) : b.updatedAt.localeCompare(a.updatedAt));
+  const changeDeletion = async (project: Project) => {
+    setChanging(project.id);
+    setError(null);
+    try {
+      const path = `/api/projects/${project.id}`;
+      await api(project.deletedAt ? `${path}/restore` : path, { method: project.deletedAt ? "POST" : "DELETE" });
+      refresh();
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : String(error_));
+    } finally { setChanging(null); }
+  };
 
   return (
     <main className={css.home}>
-      <header className={css.hero}>
-        <div><div className={css.brandMark}>X</div><div><h1>TikZ Bench</h1><p>在画布上编辑，用 TikZ 源码保存。</p></div></div>
+      <header className={css.homeHeader}>
+        <div className={css.homeBrand}><div className={css.brandMark} aria-hidden="true">X</div><strong>TikZ Bench</strong></div>
+      </header>
+      <div className={css.dashboard}>
+      <aside className={css.sidebar}>
         <div className={css.actions}>
           <input ref={fileInputRef} className={css.hiddenInput} type="file" accept=".tex,.tikz,.zip" onChange={(event) => {
             const file = event.target.files?.[0];
@@ -99,42 +107,50 @@ function ProjectHome() {
             }
             void file.text().then((source) => { setNewProject({ name: file.name.replace(/\.(?:tex|tikz)$/iu, ""), source }); }).catch((error_: unknown) => { setError(String(error_)); });
           }} />
-          <button type="button" className={css.secondary} onClick={() => fileInputRef.current?.click()}>导入 TeX / 工程 ZIP</button>
           <button type="button" className={css.primary} onClick={() => { setNewProject({ name: "" }); }}>新建项目</button>
+          <button type="button" className={css.secondary} onClick={() => fileInputRef.current?.click()}>导入 TeX / 工程 ZIP</button>
         </div>
-      </header>
+        <nav aria-label="项目分类">
+          <button type="button" aria-current={view === "active" ? "page" : undefined} onClick={() => { setView("active"); setQuery(""); }}>所有项目 <span>{activeCount}</span></button>
+          <button type="button" aria-current={view === "trash" ? "page" : undefined} onClick={() => { setView("trash"); setQuery(""); }}>回收站 <span>{projects.length - activeCount}</span></button>
+        </nav>
+      </aside>
       <section className={css.content}>
-        <div className={css.sectionHeading}><h2>Projects</h2><span>{projects.length} projects</span></div>
-        {error ? <div className={css.error}>{error}</div> : null}
-        {loading ? <div className={css.empty}>Loading projects…</div> : projects.length === 0 ? (
-          <div className={css.empty}><h3>No projects yet</h3><p>Create a blank canvas or import an existing TeX file.</p></div>
-        ) : (
-          <div className={css.grid}>{projects.map((project) => (
-            <article key={project.id} className={css.card} onClick={() => { navigate(`/project/${project.id}`); }}>
-              <ProjectThumbnail project={project} />
-              <div className={css.cardBody}><div><h3>{project.name}</h3><time>{new Date(project.updatedAt).toLocaleString()}</time></div>
-                <div className={css.cardActions}>
-                <button type="button" title="Rename project" aria-label={`Rename ${project.name}`} onClick={(event) => {
-                  event.stopPropagation(); setEditingProject(project);
-                }}>✎</button>
-                <button type="button" title="Delete project" onClick={(event) => {
-                  event.stopPropagation();
-                  if (window.confirm(`Move “${project.name}” to trash?`)) void api(`/api/projects/${project.id}`, { method: "DELETE" }).then(refresh);
-                }}>×</button>
-                </div>
-              </div>
-            </article>
-          ))}</div>
-        )}
+        <div className={css.sectionHeading}><h1>{view === "active" ? "所有项目" : "回收站"}</h1><span aria-live="polite">{visible.length} 个项目</span></div>
+        <div className={css.listControls}>
+          <input type="search" aria-label="搜索项目" placeholder="搜索项目名称或描述" value={query} onChange={(event) => { setQuery(event.currentTarget.value); }} />
+          <select aria-label="排序项目" value={sort} onChange={(event) => { setSort(event.currentTarget.value === "name" ? "name" : "updated"); }}>
+            <option value="updated">最近更新</option><option value="name">项目名称</option>
+          </select>
+        </div>
+        {error ? <div role="alert" className={css.error}>{error} <button type="button" onClick={refresh}>重试</button></div> : null}
+        {loading ? <div role="status" className={css.empty}>正在加载项目…</div> : !visible.length ? (
+          <div className={css.empty}>{keyword ? "没有符合搜索条件的项目。" : view === "trash" ? "回收站为空。" : "还没有项目。可以新建项目或导入现有工程。"}</div>
+        ) : <div className={css.tableFrame}><table className={css.projectTable}>
+          <thead><tr><th scope="col">项目名称</th><th scope="col">{view === "trash" ? "移入时间" : "最后修改"}</th><th scope="col">操作</th></tr></thead>
+          <tbody>{visible.map((project) => <tr key={project.id}>
+            <td><div className={css.projectTitle}>{project.deletedAt ? <strong>{project.name}</strong> : <a href={`/project/${project.id}`} onClick={(event) => {
+              if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+              event.preventDefault(); navigate(event.currentTarget.pathname);
+            }}>{project.name}</a>}{project.description ? <span>{project.description}</span> : null}</div></td>
+            <td><time dateTime={project.updatedAt}>{new Date(project.updatedAt).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}</time></td>
+            <td><div className={css.rowActions}>{project.deletedAt
+              ? <button type="button" disabled={changing !== null} onClick={() => { void changeDeletion(project); }}>恢复</button>
+              : <><button type="button" onClick={() => { setEditingProject(project); }}>编辑信息</button>
+                <button type="button" disabled={changing !== null} onClick={() => {
+                  if (window.confirm(`将「${project.name}」移入回收站？`)) void changeDeletion(project);
+                }}>移入回收站</button></>}</div></td>
+          </tr>)}</tbody>
+        </table></div>}
       </section>
-      <footer className={css.footer}>Based on the open-source TikZ Editor by Dominik Peters · MIT License</footer>
+      </div>
       {newProject ? <ProjectDialog name={newProject.name} onClose={() => { setNewProject(null); }} onSubmit={(name, description) => create(name, description, newProject.source, newProject.archive)} /> : null}
       {editingProject ? <ProjectDialog name={editingProject.name} description={editingProject.description} onClose={() => { setEditingProject(null); }} onSubmit={(name, description) => rename(editingProject, name, description)} /> : null}
     </main>
   );
 }
 
-function ProjectEditor({ id }: { id: string }) {
+function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [draftSource, setDraftSource] = useState("");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error" | "conflict">("saved");
@@ -147,36 +163,37 @@ function ProjectEditor({ id }: { id: string }) {
   const [saveCopy, setSaveCopy] = useState(false);
   const [showTexProof, setShowTexProof] = useState(false);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
-  const [timesNewRoman, setTimesNewRoman] = useState(false);
-  const timesNewRomanRef = useRef(false);
+  const [canvasName, setCanvasName] = useState("");
+  const [addingCanvas, setAddingCanvas] = useState(false);
+  const [canvasError, setCanvasError] = useState("");
+  const [switchingCanvas, setSwitchingCanvas] = useState(false);
+  const projectUrl = `/api/projects/${id}?canvas=${canvasId}`;
   const sourceTemplate = useRef<ReturnType<typeof splitProjectSource>>(null);
   const fullSource = useCallback((body: string) => {
     const template = sourceTemplate.current;
-    const source = !template || /\\begin\{tikzpicture\*?\}/u.test(body) ? body : `${template.prefix}\n${body}\n${template.suffix}`;
-    return timesNewRomanRef.current ? applyTimesNewRoman(source) : source;
+    return !template || /\\begin\{tikzpicture\*?\}/u.test(body) ? body : `${template.prefix}\n${body}\n${template.suffix}`;
   }, []);
   const compileSource = useCallback((source: string) => {
     const template = sourceTemplate.current;
-    if (!template || /\\begin\{document\}/u.test(source)) return timesNewRomanRef.current ? applyTimesNewRoman(source) : source;
+    if (!template || /\\begin\{document\}/u.test(source)) return source;
     const instrumented = splitProjectSource(source);
     if (!instrumented) return fullSource(source);
     const getPictureStart = (prefix: string) => prefix.lastIndexOf("\\begin{tikzpicture");
     const offset = getPictureStart(template.prefix);
     const additions = instrumented.prefix.slice(0, getPictureStart(instrumented.prefix));
-    const document = `${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`;
-    return timesNewRomanRef.current ? applyTimesNewRoman(document) : document;
+    return `${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`;
   }, [fullSource]);
   const saveQueue = useMemo(() => new CoalescingSaveQueue<{ source?: string; name?: string; description?: string; thumbnailSvg?: string }, Project>(async (patch) => {
-      const { project: saved } = await api<{ project: Project }>(`/api/projects/${id}`, {
+      const { project: saved } = await api<{ project: Project }>(projectUrl, {
         method: "PATCH", headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...patch, source: patch.source === undefined ? undefined : fullSource(patch.source), expectedRevision: revisionRef.current })
       });
       revisionRef.current = saved.revision;
-      const savedSource = saved.source.replace(PROJECT_FONT_BLOCK, "");
+      const savedSource = withoutProjectFontBlock(saved.source);
       const editable = { ...saved, source: patch.source ?? (splitProjectSource(savedSource)?.body ?? savedSource) };
       setProject(editable);
       return editable;
-  }), [fullSource, id]);
+  }), [fullSource, projectUrl]);
   const persist = useCallback((patch: { source?: string; name?: string; description?: string; thumbnailSvg?: string }) => {
     setSaveStatus("saving");
     const task = saveQueue.enqueue(patch);
@@ -187,15 +204,13 @@ function ProjectEditor({ id }: { id: string }) {
   }, [saveQueue]);
 
   useEffect(() => {
-    void api<{ project: Project }>(`/api/projects/${id}`).then(({ project: loaded }) => {
-      timesNewRomanRef.current = PROJECT_FONT_BLOCK.test(loaded.source);
-      setTimesNewRoman(timesNewRomanRef.current);
-      const loadedSource = loaded.source.replace(PROJECT_FONT_BLOCK, "");
+    void api<{ project: Project }>(projectUrl).then(({ project: loaded }) => {
+      const loadedSource = withoutProjectFontBlock(loaded.source);
       sourceTemplate.current = splitProjectSource(loadedSource);
       const source = sourceTemplate.current?.body ?? loadedSource;
       setProject({ ...loaded, source }); setDraftSource(source); revisionRef.current = loaded.revision;
     }).catch(() => { navigate("/"); });
-  }, [id]);
+  }, [projectUrl]);
   useEffect(() => {
     let active = true;
     void api<{ assets: ProjectAsset[] }>(`/api/projects/${id}/assets`).then((result) => {
@@ -214,15 +229,17 @@ function ProjectEditor({ id }: { id: string }) {
   }, [draftSource, persist, project, saveStatus]);
 
   const uploadAsset = useCallback(async (file: File) => {
+    const contentType = file.type === "image/svg+xml" || /\.svg$/iu.test(file.name) ? "image/svg+xml"
+      : file.type === "application/pdf" || /\.pdf$/iu.test(file.name) ? "application/pdf" : "image/png";
     const { asset } = await api<{ asset: ProjectAsset }>(`/api/projects/${id}/assets?name=${encodeURIComponent(file.name)}`, {
-      method: "POST", headers: { "content-type": file.type === "application/pdf" || /\.pdf$/iu.test(file.name) ? "application/pdf" : "image/png" }, body: file
+      method: "POST", headers: { "content-type": contentType }, body: file
     });
     setAssets((current) => [...new Map([...current, asset].map((item) => [item.key, item])).values()]);
     return asset;
   }, [id]);
 
   const download = useCallback(async (kind: "tex" | "svg" | "pdf", capturedSource = draftRef.current) => {
-    const response = await fetch(`/api/projects/${id}/export/${kind}`, {
+    const response = await fetch(`/api/projects/${id}/export/${kind}?canvas=${canvasId}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source: fullSource(capturedSource) })
     });
     if (!response.ok) {
@@ -234,23 +251,18 @@ function ProjectEditor({ id }: { id: string }) {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${project?.name ?? "tikz-project"}.${blob.type === "application/zip" ? "zip" : kind}`;
+    const canvasName = project?.canvases?.find((canvas) => canvas.id === canvasId)?.name;
+    const name = project?.name ?? "tikz-project";
+    anchor.download = `${canvasId === "main" || !canvasName ? name : `${name}-${canvasName}`}.${blob.type === "application/zip" ? "zip" : kind}`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [fullSource, id, project?.name]);
+  }, [canvasId, fullSource, id, project?.canvases, project?.name]);
 
   const rename = useCallback(() => { setEditInfo(true); }, []);
 
   const onSaveShortcut = useCallback(() => {
     if (localStorage.getItem(SAVE_HINT_DISABLED_KEY) !== "1") setShowSaveHint(true);
   }, []);
-
-  const toggleTimesNewRoman = useCallback(() => {
-    const next = !timesNewRomanRef.current;
-    timesNewRomanRef.current = next;
-    setTimesNewRoman(next);
-    void persist({ source: draftRef.current }).catch(() => {});
-  }, [persist]);
 
   const leaveProject = useCallback(() => {
     if (leavingRef.current) return;
@@ -268,12 +280,36 @@ function ProjectEditor({ id }: { id: string }) {
     onBack: leaveProject, onRename: rename, onSourceChange: setDraftSource,
     onSaveShortcut,
     onShowTexProof: () => { setShowTexProof(true); }, compileSource,
-    timesNewRoman, onToggleTimesNewRoman: toggleTimesNewRoman,
     assets, onUploadAsset: uploadAsset,
     onDownloadTex: () => { void download("tex"); }
-  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, project, rename, saveStatus, timesNewRoman, toggleTimesNewRoman, uploadAsset]);
+  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, project, rename, saveStatus, uploadAsset]);
+
+  async function switchCanvas(target?: string) {
+    if (switchingCanvas) return;
+    setSwitchingCanvas(true);
+    setCanvasError("");
+    try {
+      if (draftRef.current !== project?.source || saveQueue.busy) await persist({ source: draftRef.current });
+      const next = target ?? (await api<{ canvas: { id: string } }>(`/api/projects/${id}/canvases`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: canvasName })
+      })).canvas.id;
+      navigate(next === "main" ? `/project/${id}` : `/project/${id}/canvas/${next}`);
+    } catch (error) {
+      setCanvasError(error instanceof Error ? error.message : String(error));
+    } finally { setSwitchingCanvas(false); }
+  }
 
   return projectProps ? <>
+    <div className={css.canvasBar} aria-label="工程画布">
+      {project?.canvases?.map((canvas) => <button type="button" key={canvas.id} aria-pressed={canvas.id === canvasId}
+        disabled={switchingCanvas || canvas.id === canvasId} onClick={() => { void switchCanvas(canvas.id); }}>{canvas.name}</button>)}
+      {addingCanvas ? <form onSubmit={(event) => { event.preventDefault(); void switchCanvas(); }}>
+        <label>画布名称 <input autoFocus required maxLength={120} value={canvasName} disabled={switchingCanvas} onChange={(event) => { setCanvasName(event.currentTarget.value); }} /></label>
+        <button type="submit" disabled={switchingCanvas || !canvasName.trim()}>创建</button>
+        <button type="button" disabled={switchingCanvas} onClick={() => { setAddingCanvas(false); }}>取消</button>
+      </form> : <button type="button" onClick={() => { setAddingCanvas(true); }}>新建画布</button>}
+      {canvasError ? <span role="alert">{canvasError}</span> : null}
+    </div>
     <App project={projectProps} />
     {showTexProof ? <TexProof projectId={id} source={fullSource(draftSource)} onClose={() => { setShowTexProof(false); }} /> : null}
     {editInfo && project ? <ProjectDialog name={project.name} description={project.description} onClose={() => { setEditInfo(false); }} onSubmit={async (name, description) => { await persist({ name, description }); }} /> : null}
@@ -302,6 +338,6 @@ export function TikzBench() {
     window.addEventListener("popstate", update);
     return () => { window.removeEventListener("popstate", update); };
   }, []);
-  const match = /^\/project\/([0-9a-f-]+)$/iu.exec(path);
-  return match ? <ProjectEditor key={match[1]} id={match[1] ?? ""} /> : <ProjectHome />;
+  const match = /^\/project\/([0-9a-f-]+)(?:\/canvas\/([0-9a-f-]+))?$/iu.exec(path);
+  return match ? <ProjectEditor key={path} id={match[1]} canvasId={match[2] ?? "main"} /> : <ProjectHome />;
 }

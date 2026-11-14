@@ -53,6 +53,7 @@ export function Toolbar({ projectMode = false, updateChip = null }: ToolbarProps
   const selectedAddMatrixColumns = useEditorStore((s) => s.selectedAddMatrixColumns);
   const matrixStyle = useEditorStore((s) => s.selectedAddMatrixStyle);
   const [matrixOrientation, setMatrixOrientation] = useState<"matrix" | "row" | "column">("matrix");
+  const [arrayCount, setArrayCount] = useState(3);
   const dispatch = useEditorStore((s) => s.dispatch);
   const projectNamedColorSwatches = useProjectNamedColorSwatches();
   const namedColorLookup = useMemo(
@@ -126,7 +127,10 @@ export function Toolbar({ projectMode = false, updateChip = null }: ToolbarProps
     if (popupKind === "shape-picker") {
       return (
         <ToolbarPopupSection title="Shape">
-          {projectMode ? <ToolbarPopupVisualChoiceGrid
+          {projectMode ? <>
+            <label>格数 <input aria-label="数组格数" type="number" min={1} max={256} step={1} value={Number.isNaN(arrayCount) ? "" : arrayCount}
+              onChange={(event) => { setArrayCount(event.currentTarget.valueAsNumber); }} /></label>
+            <ToolbarPopupVisualChoiceGrid
             ariaLabel="数组"
             choices={ARRAY_PRESETS.map(({ id, label, rows }) => ({
               id, label,
@@ -138,12 +142,14 @@ export function Toolbar({ projectMode = false, updateChip = null }: ToolbarProps
             testIdPrefix="toolbar-array-choice"
             onSelect={(id) => {
               const preset = ARRAY_PRESETS.find((choice) => choice.id === id);
-              if (!preset) return;
-              dispatch({ type: "SET_ADD_MATRIX_PRESET", rows: preset.rows, columns: preset.columns, style: preset.style });
+              if (!preset || !Number.isInteger(arrayCount) || arrayCount < 1 || arrayCount > 256) return;
+              dispatch({ type: "SET_ADD_MATRIX_PRESET", rows: preset.rows === 1 ? 1 : arrayCount, columns: preset.columns === 1 ? 1 : arrayCount, style: preset.style });
               dispatch({ type: "SET_TOOL_MODE", mode: "addMatrix" });
               setOpenPopupMode(null);
             }}
-          /> : null}
+            />
+            {!Number.isInteger(arrayCount) || arrayCount < 1 || arrayCount > 256 ? <span role="alert">请输入 1–256 之间的整数。</span> : null}
+          </> : null}
           <ToolbarPopupVisualChoiceGrid
             choices={SHAPE_POPUP_CHOICES}
             selectedId={selectedAddShape}

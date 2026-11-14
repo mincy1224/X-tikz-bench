@@ -21,7 +21,7 @@ export async function importProjectArchive(bytes: Buffer, maxSourceBytes: number
     if (++count > 256 || (total += originalSize) > MAX_PROJECT_PNG_BYTES + 4 * maxSourceBytes) {
       throw new Error("压缩包包含过多文件或解压后过大。");
     }
-    return /\.(?:tex|tikz|png|pdf)$/iu.test(name);
+    return /\.(?:tex|tikz|png|pdf|svg)$/iu.test(name);
   } });
   const entries = new Map(Object.entries(archive).map(([name, data]) => [archivePath(name), data]));
   const main = entries.has("main.tex") ? "main.tex" : [...entries.keys()].find((name) => basename(name) === "main.tex");
@@ -61,11 +61,11 @@ export async function importProjectArchive(bytes: Buffer, maxSourceBytes: number
   }
   const assetFolders = new Set([archivePath(join(dirname(main), "assets")), ...[...files].map(dirname).filter((dir) => dir !== dirname(main))]);
   for (const name of entries.keys()) {
-    if (assetFolders.has(dirname(name)) && /\.(?:png|pdf)$/iu.test(name)) files.add(name);
+    if (assetFolders.has(dirname(name)) && /\.(?:png|pdf|svg)$/iu.test(name)) files.add(name);
   }
   for (const name of files) {
-    const extension = name.toLowerCase().endsWith(".png") ? "png" : name.toLowerCase().endsWith(".pdf") ? "pdf" : null;
-    if (!extension) throw new Error(`暂不支持该素材格式：${name}`);
+    const extension = /\.(png|pdf|svg)$/iu.exec(name)?.[1].toLowerCase();
+    if (extension !== "png" && extension !== "pdf" && extension !== "svg") throw new Error(`暂不支持该素材格式：${name}`);
     const data = entries.get(name);
     if (!data) throw new Error(`压缩包中缺少图片：${name}`);
     images.set(name, await prepareAsset(Buffer.from(data), basename(name), extension));

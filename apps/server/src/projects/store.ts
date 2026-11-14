@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import { ASSET_KEY, MAX_PROJECT_PNG_BYTES, referencedPngKeys, type ProjectAsset } from "./png.js";
 import { prepareAsset, type PreparedAsset } from "./prepare-asset.js";
+import { PROJECT_PALETTE_BLOCK, withProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
 
 export type Project = {
   id: string;
@@ -105,6 +106,18 @@ CREATE TABLE IF NOT EXISTS project_revisions (
   created_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS project_canvases (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  UNIQUE(project_id, name)
+);
+CREATE TABLE IF NOT EXISTS project_shared_palette (
+  project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  source TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS project_pngs (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   key TEXT NOT NULL,
@@ -134,6 +147,42 @@ export function listProjects(config: ServerConfig, includeDeleted = false): Prom
 export async function getProject(config: ServerConfig, id: string): Promise<Project | null> {
   const result = await rows(config, `SELECT * FROM projects WHERE id=${quote(id)} LIMIT 1;`);
   return result[0] ?? null;
+}
+
+type Canvas = { id: string; name: string };
+
+export async function getProjectCanvas(config: ServerConfig, id: string, canvasId = "main") {
+  const project = await getProject(config, id);
+  if (!project || project.deletedAt) return null;
+  const output = await runSql(config, `SELECT id,name,source FROM project_canvases WHERE project_id=${quote(id)} ORDER BY created_at,id;`, true);
+  const extra = (JSON.parse(output.trim() || "[]") as (Canvas & { source: string })[]);
+  const canvases = [{ id: "main", name: "画布 1" }, ...extra.map(({ id, name }) => ({ id, name }))];
+  const selected = extra.find((entry) => entry.id === canvasId);
+  if (canvasId !== "main" && !selected) return null;
+  const paletteOutput = await runSql(config, `SELECT source FROM project_shared_palette WHERE project_id=${quote(id)};`, true);
+  const paletteRow = (JSON.parse(paletteOutput.trim() || "[]") as { source: string }[])[0];
+  const palette = paletteRow?.source ?? PROJECT_PALETTE_BLOCK.exec(project.source)?.[0] ?? "";
+  return {
+    ...project,
+    canvasId,
+    canvases,
+    source: withProjectPalette(selected?.source ?? project.source, palette),
+  };
+}
+
+export function createProjectCanvas(config: ServerConfig, projectId: string, value: string): Promise<Canvas | null> {
+  return serializeWrite(async () => {
+    const project = await getProjectCanvas(config, projectId);
+    if (!project) return null;
+    const name = value.trim();
+    if (!name || name.length > 120) throw new ProjectInputError("画布名称不能为空，且不能超过 120 个字符。", "invalid_name");
+    if (project.canvases.some((canvas) => canvas.name === name)) throw new ProjectInputError("已存在同名画布。", "duplicate_name");
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    await checkedWrite(config, `INSERT INTO project_canvases(id,project_id,name,created_at) VALUES(${quote(id)},${quote(projectId)},${quote(name)},${quote(now)});
+      UPDATE projects SET updated_at=${quote(now)} WHERE id=${quote(projectId)};`);
+    return { id, name };
+  });
 }
 
 export class ProjectInputError extends Error {
@@ -182,14 +231,14 @@ function insertAssetSql(id: string, asset: PreparedAsset): string {
     INSERT OR IGNORE INTO project_asset_details(project_id,key,name,width,height,preview) VALUES(${quote(id)},${quote(asset.key)},${quote(asset.name)},${asset.width},${asset.height},${asset.preview ? `X'${asset.preview.toString("hex")}'` : "NULL"});`;
 }
 
-export async function storeProjectPng(config: ServerConfig, id: string, data: Buffer, name = "", extension: "png" | "pdf" = "png") {
+export async function storeProjectPng(config: ServerConfig, id: string, data: Buffer, name = "", extension: "png" | "pdf" | "svg" = "png") {
   const asset = await prepareAsset(data, name, extension);
   return serializeWrite(async () => {
     const project = await getProject(config, id);
     if (!project || project.deletedAt) return null;
     const { key, width, height } = asset;
     const size = Number((await runSql(config, `SELECT coalesce(sum(length(data)),0) FROM project_pngs WHERE project_id=${quote(id)} AND key!=${quote(key)};`)).trim());
-    if (size + data.length > MAX_PROJECT_PNG_BYTES) throw new Error("项目的 PNG 资源已超过 50 MiB。");
+    if (size + asset.data.length > MAX_PROJECT_PNG_BYTES) throw new Error("项目的素材已超过 50 MiB。");
     await checkedWrite(config, insertAssetSql(id, asset));
     return { key, width, height, name: asset.name };
   });
@@ -241,9 +290,9 @@ export async function getReferencedProjectPngs(config: ServerConfig, id: string 
   return result;
 }
 
-export function updateProject(config: ServerConfig, id: string, input: { name?: string; description?: string; source?: string; expectedRevision?: number; thumbnailSvg?: string | null }): Promise<Project | "conflict" | null> {
+export function updateProject(config: ServerConfig, id: string, input: { name?: string; description?: string; source?: string; expectedRevision?: number; thumbnailSvg?: string | null }, canvasId = "main"): Promise<Project | "conflict" | null> {
   return serializeWrite(async () => {
-    const current = await getProject(config, id);
+    const current = await getProjectCanvas(config, id, canvasId);
     if (!current) return null;
     if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) return "conflict";
     const nextSource = input.source ?? current.source;
@@ -252,11 +301,15 @@ export function updateProject(config: ServerConfig, id: string, input: { name?: 
     if (nextName === current.name && nextDescription === current.description && nextSource === current.source && (input.thumbnailSvg === undefined || input.thumbnailSvg === current.thumbnailSvg)) return current;
     const nextRevision = current.revision + 1;
     const now = new Date().toISOString();
+    const source = nextSource.replace(PROJECT_PALETTE_BLOCK, "");
+    const palette = PROJECT_PALETTE_BLOCK.exec(nextSource)?.[0] ?? "";
     await checkedWrite(config, `
-      ${nextSource !== current.source ? `INSERT INTO project_revisions(project_id,revision,source,created_at) VALUES(${quote(id)},${current.revision},${quote(current.source)},${quote(now)});` : ""}
-      UPDATE projects SET name=${quote(nextName)},description=${quote(nextDescription)},source=${quote(nextSource)},revision=${nextRevision},thumbnail_svg=${input.thumbnailSvg === undefined ? "thumbnail_svg" : input.thumbnailSvg === null ? "NULL" : quote(input.thumbnailSvg)},updated_at=${quote(now)} WHERE id=${quote(id)};
+      ${input.source === undefined ? "" : `INSERT INTO project_shared_palette(project_id,source) VALUES(${quote(id)},${quote(palette)}) ON CONFLICT(project_id) DO UPDATE SET source=excluded.source;`}
+      ${canvasId === "main" && nextSource !== current.source ? `INSERT INTO project_revisions(project_id,revision,source,created_at) VALUES(${quote(id)},${current.revision},${quote(current.source)},${quote(now)});` : ""}
+      ${canvasId !== "main" && input.source !== undefined ? `UPDATE project_canvases SET source=${quote(source)} WHERE id=${quote(canvasId)} AND project_id=${quote(id)};` : ""}
+      UPDATE projects SET name=${quote(nextName)},description=${quote(nextDescription)},source=${canvasId === "main" && input.source !== undefined ? quote(source) : "source"},revision=${nextRevision},thumbnail_svg=${canvasId !== "main" || input.thumbnailSvg === undefined ? "thumbnail_svg" : input.thumbnailSvg === null ? "NULL" : quote(input.thumbnailSvg)},updated_at=${quote(now)} WHERE id=${quote(id)};
       DELETE FROM project_revisions WHERE project_id=${quote(id)} AND id NOT IN (SELECT id FROM project_revisions WHERE project_id=${quote(id)} ORDER BY revision DESC LIMIT 30);`);
-    return await getProject(config, id);
+    return await getProjectCanvas(config, id, canvasId);
   });
 }
 
@@ -266,6 +319,17 @@ export function softDeleteProject(config: ServerConfig, id: string): Promise<boo
     if (!project) return false;
     const now = new Date().toISOString();
     await runSql(config, `UPDATE projects SET deleted_at=${quote(now)},updated_at=${quote(now)} WHERE id=${quote(id)};`);
+    return true;
+  });
+}
+
+export function restoreProject(config: ServerConfig, id: string): Promise<boolean> {
+  return serializeWrite(async () => {
+    const project = await getProject(config, id);
+    if (!project) return false;
+    if (project.deletedAt) {
+      await checkedWrite(config, `UPDATE projects SET deleted_at=NULL WHERE id=${quote(id)};`);
+    }
     return true;
   });
 }

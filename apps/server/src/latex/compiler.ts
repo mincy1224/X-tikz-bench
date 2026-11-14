@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
 import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
+import { DEFAULT_PROJECT_FONT, withoutProjectFontBlock } from "../../../../packages/core/src/tex/project-source.js";
 
 export type LatexDiagnostic = { file: string; line: number; message: string };
 export type CompileResult = { svg: string; log: string; diagnostics: LatexDiagnostic[]; markers: ObjectMarker[] };
@@ -42,21 +43,31 @@ export function parseLatexDiagnostics(log: string): LatexDiagnostic[] {
   const lines = log.split(/\r?\n/);
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
-    const match = /^(.*?\.tex):(\d+):\s*(.+)$/.exec(line.trim());
+    const match = /^(.*?\.(?:tex|sty|cls|def)):(\d+):\s*(.+)$/u.exec(line.trim());
     if (!match) continue;
-    const message = [match[3]];
-    const packageName = /^Package ([\w.-]+) Error:/u.exec(match[3])?.[1];
+    let end = index;
+    let firstLine = match[3];
+    // TeX can wrap even the word "Error" when a package path is long.
+    while (lines[end].length >= 79 && lines[end + 1] && /^[^\s!]/u.test(lines[end + 1])) {
+      firstLine += lines[++end];
+    }
+    const message = [firstLine];
+    const packageName = /^Package ([\w.-]+) Error:/u.exec(firstLine)?.[1];
     if (packageName) {
       const prefix = `(${packageName})`;
-      for (let next = index + 1; next < lines.length; next++) {
+      for (let next = end + 1; next < lines.length; next++) {
         const continuation = lines[next].trimStart();
         if (!continuation.startsWith(prefix)) break;
         const text = continuation.slice(prefix.length).trim();
         if (text) message.push(text);
       }
     }
-    diagnostics.push({ file: path.basename(match[1]), line: Number(match[2]), message: message.join(" ") });
+    diagnostics.push({ file: path.posix.basename(match[1].replaceAll("\\", "/")), line: Number(match[2]), message: message.join(" ") });
     if (diagnostics.length >= 50) break;
+  }
+  if (!diagnostics.length) {
+    const error = lines.find((line) => /^!\s+\S/u.test(line));
+    if (error) diagnostics.push({ file: "input.tex", line: 0, message: error.replace(/^!\s+/u, "") });
   }
   return diagnostics;
 }
@@ -140,14 +151,14 @@ async function stagePngs(directory: string, pngs?: ReadonlyMap<string, Buffer>):
   }
 }
 
-export async function compileLatex(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>): Promise<CompileResult> {
+export async function compileLatex(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false): Promise<CompileResult> {
   const deadline = Date.now() + config.timeoutMs;
-  const profile = resolveCompileProfile(source, requestedProfile);
+  const profile = resolveCompileProfile(source, projectDefaults && requestedProfile === "auto" ? "xelatex" : requestedProfile);
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-"));
   try {
     await stagePngs(directory, pngs);
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
-    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile), "utf8");
+    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults), "utf8");
     const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true, fontConfig);
     const logPath = path.join(directory, "input.log");
     const fullLog = await readFile(logPath, "utf8").catch(() => latex.output);
@@ -174,17 +185,23 @@ export async function compileLatex(source: string, config: ServerConfig, request
   }
 }
 
-export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto"): string {
+export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto", projectDefaults = false): string {
+  if (projectDefaults) source = withoutProjectFontBlock(source);
   const environment = extractTexEnvironment(source);
-  const mathPackages = ["amsmath", "amssymb", "mathtools", ...inferredMathPackages(source, environment)];
+  const explicit = new Set(environment.packages.map((item) => item.name));
+  const mathPackages = ["amsmath", "mathtools", ...inferredMathPackages(source, environment)];
+  if (!["newtx", "newtxmath", "newpxmath", "unicode-math"].some((name) => explicit.has(name))) mathPackages.push("amssymb");
+  const profile = resolveCompileProfile(source, projectDefaults && requestedProfile === "auto" ? "xelatex" : requestedProfile);
+  const font = projectDefaults && profile === "xelatex" &&
+    !environment.commands.some((command) => command.name === "setmainfont" && command.span.from < environment.prefixEnd) &&
+    !["newtx", "newtxtext", "newpxtext"].some((name) => explicit.has(name))
+    ? DEFAULT_PROJECT_FONT : "";
   if (/\\includegraphics\b/u.test(source)) mathPackages.push("graphicx");
   if (environment.completeDocument) {
-    const explicit = new Set(environment.packages.map((item) => item.name));
     const missing = mathPackages.filter((name) => !explicit.has(name)).map((name) => `\\usepackage{${name}}`).join("\n");
-    return missing ? source.slice(0, environment.insertionOffset) + missing + "\n" + source.slice(environment.insertionOffset) : source;
+    const additions = [missing, font].filter(Boolean).join("\n");
+    return additions ? source.slice(0, environment.insertionOffset) + "\n" + additions + "\n" + source.slice(environment.insertionOffset) : source;
   }
-  const profile = resolveCompileProfile(source, requestedProfile);
-  const explicit = new Set(environment.packages.map((item) => item.name));
   const defaults: { name: string; options?: string }[] = [{ name: "tikz" }, ...mathPackages.map((name) => ({ name }))];
   if (profile === "xelatex" && /[\u3400-\u9fff]/u.test(source)) defaults.push({ name: "ctex", options: "fontset=fandol" });
   if (/\\begin\{forest\}/u.test(source)) defaults.push({ name: "forest" });
@@ -194,17 +211,17 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
   const preamble = withDefaultPackages(environment.preamble, defaults);
   const plotSetup = plots ? `${explicit.has("pgfplots") ? "" : "\\pgfplotsset{compat=1.18}\n"}\\usepgfplotslibrary{statistics,groupplots}` : "";
   const content = /\\begin\{(?:tikzpicture|forest|circuitikz)\}/u.test(environment.body) ? environment.body : `\\begin{tikzpicture}\n${environment.body}\n\\end{tikzpicture}`;
-  return `\\documentclass[border=2pt]{standalone}\n${preamble}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${plotSetup}\n\\begin{document}\n${content}\n\\end{document}\n`;
+  return `\\documentclass[border=2pt]{standalone}\n${preamble}\n${font}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${plotSetup}\n\\begin{document}\n${content}\n\\end{document}\n`;
 }
 
-export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>): Promise<PdfCompileResult> {
+export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false): Promise<PdfCompileResult> {
   const deadline = Date.now() + config.timeoutMs;
-  const profile = resolveCompileProfile(source, requestedProfile);
+  const profile = resolveCompileProfile(source, projectDefaults && requestedProfile === "auto" ? "xelatex" : requestedProfile);
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-pdf-"));
   try {
     await stagePngs(directory, pngs);
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
-    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile), "utf8");
+    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults), "utf8");
     const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true, fontConfig);
     const fullLog = await readFile(path.join(directory, "input.log"), "utf8").catch(() => latex.output);
     const log = fullLog.slice(-MAX_LOG_BYTES);

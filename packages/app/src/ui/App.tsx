@@ -33,6 +33,7 @@ import { getActiveEditorPlatform } from "../platform/current";
 import { ProjectCompilationContext, ProjectIdContext } from "./project-png-images";
 import { ProjectPngProperties } from "./ProjectPngProperties";
 import { ProjectShapeProperties } from "./ProjectShapeProperties";
+import { ProjectPalette } from "./ProjectPalette";
 import { ProjectAssetPanel, PROJECT_ASSET_DRAG_TYPE, type ProjectAsset } from "./ProjectAssetPanel";
 import css from "./App.module.css";
 import "./variables.css";
@@ -250,8 +251,6 @@ export type AppProps = {
     onSaveShortcut: () => void;
     onShowTexProof: () => void;
     compileSource: (source: string) => string;
-    timesNewRoman: boolean;
-    onToggleTimesNewRoman: () => void;
     assets: readonly ProjectAsset[];
     onUploadAsset: (file: File) => Promise<ProjectAsset>;
     onDownloadTex: () => void;
@@ -261,6 +260,8 @@ export type AppProps = {
 function identitySource(source: string): string { return source; }
 
 export function App({ project }: AppProps = {}) {
+  const [showProjectPalette, setShowProjectPalette] = useState(false);
+  const preferNativeSerif = project !== undefined;
   const uiLanguage = useUiLocalization();
   const {
     source,
@@ -946,7 +947,7 @@ export function App({ project }: AppProps = {}) {
 
   useEffect(() => {
     const scheduler = createSingleFlightScheduler<ComputeRequest, ComputeResponse>({
-      run: (request) => computeSnapshot(request),
+      run: (request) => computeSnapshot({ ...request, preferNativeSerif }),
       onStart: (request) => {
         if ((request.kind ?? "render") === "prewarm") {
           return;
@@ -982,7 +983,7 @@ export function App({ project }: AppProps = {}) {
       scheduler.dispose();
       computeSchedulerRef.current = null;
     };
-  }, [dispatch]);
+  }, [dispatch, preferNativeSerif]);
 
   // ── Compute pipeline ─────────────────────────────────────────────────────────
   // Keep at most one in-flight compute; while in-flight, coalesce to the latest source.
@@ -1998,7 +1999,7 @@ export function App({ project }: AppProps = {}) {
   const [assetStatus, setAssetStatus] = useState("");
   const [showAssets, setShowAssets] = useState(false);
   function isProjectAsset(file: File): boolean {
-    return file.type === "image/png" || file.type === "application/pdf" || /\.(?:png|pdf)$/iu.test(file.name);
+    return ["image/png", "image/svg+xml", "application/pdf"].includes(file.type) || /\.(?:png|pdf|svg)$/iu.test(file.name);
   }
   function placeAsset(asset: ProjectAsset, client?: { x: number; y: number }) {
     const state = useEditorStore.getState();
@@ -2019,7 +2020,7 @@ export function App({ project }: AppProps = {}) {
     setAssetStatus("正在导入素材…");
     const errors: string[] = [];
     for (const [index, file] of files.entries()) {
-      if (!isProjectAsset(file)) { errors.push(`${file.name}：请选择 PNG 或 PDF。`); continue; }
+      if (!isProjectAsset(file)) { errors.push(`${file.name}：请选择 PNG、SVG 或 PDF。`); continue; }
       try {
         const asset = await project.onUploadAsset(file);
         if (placement && index === 0 && useEditorStore.getState().activeDocumentId === documentId) placeAsset(asset, placement === "center" ? undefined : placement);
@@ -2117,9 +2118,9 @@ export function App({ project }: AppProps = {}) {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" fill="var(--bg-pane)" /><circle cx="15" cy="12" r="2" fill="var(--bg-pane)" /><circle cx="9" cy="18" r="2" fill="var(--bg-pane)" /></svg>
           </button>
           <button type="button" className={css.projectProof} onClick={project.onShowTexProof}>TeX 校样</button>
-          <button type="button" className={css.projectExport} aria-pressed={project.timesNewRoman} title="在 XeLaTeX 校样和导出中使用 Times New Roman" onClick={project.onToggleTimesNewRoman}>Times New Roman</button>
+          <button type="button" className={css.projectExport} aria-expanded={showProjectPalette} onClick={() => { setShowProjectPalette(!showProjectPalette); }}>配色盘</button>
           <button type="button" className={css.projectExport} aria-expanded={showAssets} aria-controls={showAssets ? "project-assets" : undefined} onClick={() => { setShowAssets(!showAssets); }}>素材</button>
-          <input hidden ref={pngInput} type="file" multiple accept="image/png,application/pdf,.png,.pdf" aria-label="选择素材" onChange={(event) => {
+          <input hidden ref={pngInput} type="file" multiple accept="image/png,image/svg+xml,application/pdf,.png,.svg,.pdf" aria-label="选择素材" onChange={(event) => {
             const files = Array.from(event.currentTarget.files ?? []);
             event.currentTarget.value = "";
             void importAssets(files);
@@ -2137,6 +2138,7 @@ export function App({ project }: AppProps = {}) {
         onPlace={placeAsset} onImport={(files) => { void importAssets(files); }} /> : null}
       {assetStatus ? <div className={css.compileNotice} role="status">{assetStatus}</div> : null}
       {project ? <><ProjectPngProperties /><ProjectShapeProperties /></> : null}
+      {project && showProjectPalette ? <ProjectPalette /> : null}
       {platform.menu?.usesNativeMenuBar ? null : (
         <AppMenuBar
           definition={menuDefinition}

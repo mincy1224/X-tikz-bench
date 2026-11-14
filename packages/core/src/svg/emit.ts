@@ -88,7 +88,7 @@ const PGF_SHADE_SCALE_FACTOR = 0.01992528;
 const PGF_SHADE_CANONICAL_SIZE = 100.375;
 const PGF_SHADE_CANONICAL_HALF = PGF_SHADE_CANONICAL_SIZE / 2;
 const PGF_BALL_FOCUS_OFFSET = PGF_SHADE_CANONICAL_HALF * 0.2;
-const PLAIN_TEXT_SERIF_FONT_STACK = "MJX-NCM, CMU Serif, Latin Modern Roman, Times New Roman, serif";
+const PLAIN_TEXT_SERIF_FONT_STACK = "Times New Roman, Liberation Serif, serif";
 const PLAIN_TEXT_SANS_FONT_STACK = "MJX-NCM-Sans, CMU Sans Serif, Latin Modern Sans, Helvetica, Arial, sans-serif";
 const PLAIN_TEXT_MONO_FONT_STACK = "MJX-NCM-Monospace, Latin Modern Mono, CMU Typewriter Text, Courier New, monospace";
 
@@ -558,7 +558,8 @@ export function emitSvgModel(scene: SceneFigure, opts: EmitSvgOptions = {}): Svg
       }
     }
     const textX = alignedTextAnchorX(position.x, textBlockWidth, element.style.textAlign);
-    const attrs = styleAttributes(element.style, true);
+    const nativeSerif = element.textRenderInfo?.mode === "plain" ? element.textRenderInfo.nativeSerif : undefined;
+    const attrs = styleAttributes(nativeSerif ? { ...element.style, ...nativeSerif } : element.style, true);
     const textTransforms: string[] = [];
     if (svgElementTransform) textTransforms.push(formatMatrix(svgElementTransform));
     if (hasRotation) textTransforms.push(`rotate(${fmt(-rotation)} ${fmt(position.x)} ${fmt(position.y)})`);

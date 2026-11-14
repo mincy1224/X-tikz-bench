@@ -25,7 +25,7 @@ export function ProjectAssetPanel({ assets, projectId, onChoose, onPlace, onImpo
       onImport(Array.from(event.dataTransfer.files));
     }}>
     <button type="button" className={css.import} onClick={onChoose}>导入素材</button>
-    {assets.length === 0 ? <span className={css.empty}>导入 PNG 或 PDF 后，可将素材拖到画布。</span> :
+    {assets.length === 0 ? <span className={css.empty}>导入 PNG、SVG 或 PDF 后，可将素材拖到画布。</span> :
       <ul className={css.assets}>
         {assets.map((asset) => <li key={asset.key}>
           <button type="button" draggable title={asset.name} className={css.asset}

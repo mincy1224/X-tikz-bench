@@ -36,11 +36,15 @@ TIKZ_TEX_BIN_DIR=/usr/local/texlive/2026/bin/x86_64-linux bash install.sh
 
 安装后可使用 `x-tikz-bench status`、`x-tikz-bench logs`、`x-tikz-bench restart` 管理服务。详细配置见 [服务端文档](apps/server/README.md)。在其他机器上通过 Git 安装当前改动前，需要先将这一版源码提交并推送到自己的仓库。
 
+每个工程可以创建多个命名画布，画布分别保存 TikZ 源码，共用工程级素材和配色盘。「导出 LaTeX 工程」导出当前画布及工程素材。
+
+SVG、PDF、PNG 都可作为素材导入。Ubuntu / WSL 上会调用 `rsvg-convert`（`sudo apt-get install librsvg2-bin`）。Windows 上使用 Inkscape，可通过 `TIKZ_INKSCAPE_BIN` 指定其路径。SVG 会转换成 PDF 加入素材库，工程 ZIP 携带 PDF，供 XeLaTeX 直接编译。PDF 和 SVG 素材的画布预览需要 Poppler。
+
 ## 手动从源码构建并运行（含原生 Windows）
 
 在 Windows PowerShell 进入仓库目录，执行 `npm ci`、`npm run build:full`，再执行 `.\start-windows.cmd`。打开 <http://127.0.0.1:5176/>，用 `Ctrl+C` 停止服务。也可运行 `npm run package:windows`，解压 `release/x-tikz-bench-windows.zip` 后双击 `start-windows.cmd`。ZIP 包含编译好的网页和服务端，运行时使用本机的 Node.js 和 `sqlite3.exe`。命令在当前终端前台运行。Windows 版数据库位于启动目录下的 `data/x-tikz-bench.sqlite`。
 
-Windows 上请把 `sqlite3.exe` 和 TeX Live 的 Windows `bin` 目录加入当前终端的 `PATH`。也可以通过 `TIKZ_SQLITE_BIN` 指定 SQLite 的完整路径。真实校样与 SVG/PDF 导出使用原生 XeLaTeX；PDF 素材预览需要 `pdftocairo.exe` 或 `pdftoppm.exe`。Times New Roman 使用编译端可访问的字体，工作台按钮应用到 XeLaTeX 校样和导出。在 WSL2 中，如果可以读取 `/mnt/c/Windows/Fonts`，XeLaTeX 会使用该目录中已安装的 Windows 字体。
+Windows 上请把 `sqlite3.exe` 和 TeX Live 的 Windows `bin` 目录加入当前终端的 `PATH`。也可以通过 `TIKZ_SQLITE_BIN` 指定 SQLite 的完整路径。真实校样与 SVG/PDF 导出使用原生 XeLaTeX；PDF 素材预览需要 `pdftocairo.exe` 或 `pdftoppm.exe`。XeLaTeX 校样和导出默认使用 Times New Roman，系统缺少该字体时尝试 TeX Gyre Termes。项目显式指定的正文字体优先。在 WSL2 中，如果可以读取 `/mnt/c/Windows/Fonts`，XeLaTeX 会使用该目录中已安装的 Windows 字体。
 
 需要 Node.js 22.13+、npm 10.5+ 和 SQLite。真实 TeX 校样及 SVG/PDF 导出需要 TeX Live 2026 提供 `latex`、`xelatex`、`dvisvgm`、`dvipdfmx`、`kpsewhich`，以及 TikZ、standalone、数学包和示例涉及的 PGFPlots、Circuitikz 等包。
 

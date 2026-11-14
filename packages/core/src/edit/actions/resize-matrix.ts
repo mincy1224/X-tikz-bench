@@ -16,6 +16,7 @@ import { scaleObjectStyle } from "../scale-object-style.js";
 import { parseOptionListRaw } from "../../options/parse.js";
 import type { ResizeElementAction } from "./resize-element.js";
 import type { EditActionResultLike } from "../result-types.js";
+import { isArrayGrid } from "../matrix-grid-source.js";
 
 /** Matrix dimensions are a layout operation, not an outer-node minimum size. */
 export function resizeMatrix(source: string, action: ResizeElementAction, target: PropertyTarget, semantic: EvaluateTikzResult, options: EditParseOptions): EditActionResultLike {
@@ -80,6 +81,13 @@ export function resizeMatrix(source: string, action: ResizeElementAction, target
       next = applyOptionMutationsToTarget(next, cellTarget.target, cellSizes)?.source ?? next;
     }
     next = scaleObjectStyle(next, action.elementId, factor, source, semantic.scene.elements, options);
+  } else if (isArrayGrid(target.options) && columns.size && rows.size) {
+    if (left || right || action.preserveAspect) {
+      nodeMutations.set("minimum width", { kind: "set", value: `${formatNumber(Math.max(0.1, width / columns.size), { fractionDigits: 4 })}pt` });
+    }
+    if (top || bottom || action.preserveAspect) {
+      nodeMutations.set("minimum height", { kind: "set", value: `${formatNumber(Math.max(0.1, height / rows.size), { fractionDigits: 4 })}pt` });
+    }
   } else if (!spacing("column sep", columns.size, columns, width, oldWidth, mode.columnSep, "minimum width") || !spacing("row sep", rows.size, rows, height, oldHeight, mode.rowSep, "minimum height")) return { kind: "unsupported", reason: "已达到矩阵内容所需的最小尺寸；请减少字号、内边距或使用整体缩放。" };
   if (nodeMutations.size) {
     const nodesRaw = rewriteOptionListMutations(nodes ?? parseOptionListRaw("[]", 0), nodeMutations);

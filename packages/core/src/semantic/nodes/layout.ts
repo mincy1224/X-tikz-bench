@@ -9,11 +9,12 @@ import { parseLength } from "../coords/parse-length.js";
 import type { ResolvedStyle } from "../types.js";
 import type { NodeLayout, NodeShape } from "./types.js";
 import { normalizeOptionValue } from "./utils.js";
+import { readTexGroup } from "../../tex/environment.js";
 
 const EXPLICIT_LINE_BREAK_PATTERN = /[ \t\r\n]*\\\\(?:\[[^\]]*\])?[ \t\r\n]*/g;
 const EXPLICIT_LINE_BREAK_CANONICAL_PATTERN = /[ \t\r\n]*(\\\\(?:\[[^\]]*\])?)[ \t\r\n]*/g;
 const EXPLICIT_LINE_BREAK_TOKEN_PATTERN = /\\\\(?:\[[^\]]*\])?/;
-const PLAIN_TEXT_SERIF_FONT_STACK = "MJX-NCM, CMU Serif, Latin Modern Roman, Times New Roman, serif";
+const PLAIN_TEXT_SERIF_FONT_STACK = '"Times New Roman", "Liberation Serif", serif';
 const PLAIN_TEXT_SANS_FONT_STACK = "MJX-NCM-Sans, CMU Sans Serif, Latin Modern Sans, Helvetica, Arial, sans-serif";
 const PLAIN_TEXT_MONO_FONT_STACK = "MJX-NCM-Monospace, Latin Modern Mono, CMU Typewriter Text, Courier New, monospace";
 
@@ -140,9 +141,35 @@ export function resolveNodeLayout(
 
   const noWidthHalignEnabled = (explicitAlign != null && explicitAlign !== "none") || hasNoWidthHalignHeader;
   const explicitLineBreaksActive = textWidth != null || noWidthHalignEnabled;
-  const normalizedText = normalizeTextForLineBreakPolicy(text, explicitLineBreaksActive);
+  let normalizedText = normalizeTextForLineBreakPolicy(text, explicitLineBreaksActive);
+  let plainStyle = style;
+  let nativeSerif = false;
+  if (textEngine?.preferNativeSerif && textMode === "text" && style.fontFamily === "serif") {
+    let candidate = normalizedText;
+    let fontStyle = style.fontStyle;
+    let fontWeight = style.fontWeight;
+    for (;;) {
+      const wrapper = /^\\(textit|textbf|textnormal|textup|textmd)\s*\{/u.exec(candidate);
+      if (!wrapper) break;
+      const command = wrapper[1];
+      const group = readTexGroup(candidate, wrapper[0].length - 1);
+      if (group?.end !== candidate.length) break;
+      if (command === "textit") fontStyle = "italic";
+      if (command === "textbf") fontWeight = "bold";
+      if (command === "textup" || command === "textnormal") fontStyle = "normal";
+      if (command === "textmd" || command === "textnormal") fontWeight = "normal";
+      candidate = group.text;
+    }
+    if (!/[\\{}$%&#_^~]/u.test(candidate)) {
+      normalizedText = candidate;
+      plainStyle = { ...style, fontStyle, fontWeight };
+      nativeSerif = true;
+    }
+  }
 
-  let textRenderInfo: NodeTextRenderInfo = { mode: "plain" };
+  let textRenderInfo: NodeTextRenderInfo = nativeSerif
+    ? { mode: "plain", nativeSerif: { fontStyle: plainStyle.fontStyle, fontWeight: plainStyle.fontWeight } }
+    : { mode: "plain" };
   let textLines = computeNodeTextLines(normalizedText, textWidth, charWidth);
   let textNaturalWidth: number;
   let textNaturalHeight: number;
@@ -152,6 +179,7 @@ export function resolveNodeLayout(
   const layoutKind = resolveTextLayoutKind(text, textWidth, explicitLineBreaksActive);
 
   const measuredText = (() => {
+    if (nativeSerif) return null;
     try {
       return textEngine?.measure({
         text: normalizedText,
@@ -184,7 +212,7 @@ export function resolveNodeLayout(
       paragraphAlignment
     };
   } else {
-    const plainMetrics = measurePlainTextBlock(textLines, style, charWidth, lineHeight, baseLineY, midLineY);
+    const plainMetrics = measurePlainTextBlock(textLines, plainStyle, charWidth, lineHeight, baseLineY, midLineY);
     textNaturalWidth = plainMetrics.width;
     textNaturalHeight = plainMetrics.height;
     baseLineY = plainMetrics.baselineY;

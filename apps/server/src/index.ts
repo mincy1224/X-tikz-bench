@@ -3,7 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError } from "./latex/compiler.js";
-import { createProject, getAllProjectAssets, getAssetPreview, getProject, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, softDeleteProject, storeProjectPng, updateProject } from "./projects/store.js";
+import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, restoreProject, softDeleteProject, storeProjectPng, updateProject } from "./projects/store.js";
 import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
 import { splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
 import { importProjectArchive } from "./projects/import-archive.js";
@@ -111,9 +111,10 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     }
     if (pngMatch && request.method === "POST" && !pngMatch[2]) {
       const contentType = request.headers["content-type"];
-      if (contentType !== "image/png" && contentType !== "application/pdf") { json(response, 415, { error: "请选择 PNG 或 PDF 文件。" }); return; }
+      const extension = contentType === "image/png" ? "png" : contentType === "application/pdf" ? "pdf" : contentType === "image/svg+xml" ? "svg" : null;
+      if (!extension) { json(response, 415, { error: "请选择 PNG、SVG 或 PDF 文件。" }); return; }
       try {
-        const asset = await storeProjectPng(config, pngMatch[1], await binaryBody(request, MAX_PNG_BYTES), url.searchParams.get("name") ?? "", contentType === "application/pdf" ? "pdf" : "png");
+        const asset = await storeProjectPng(config, pngMatch[1], await binaryBody(request, MAX_PNG_BYTES), url.searchParams.get("name") ?? "", extension);
         json(response, asset ? 201 : 404, asset ? { asset } : { error: "Project not found." });
       } catch (error) {
         json(response, 422, { error: error instanceof Error ? error.message : String(error) });
@@ -128,8 +129,22 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       return;
     }
     const projectMatch = /^\/api\/projects\/([0-9a-f-]+)$/iu.exec(url.pathname);
+    const restoreMatch = /^\/api\/projects\/([0-9a-f-]+)\/restore$/iu.exec(url.pathname);
+    if (restoreMatch && request.method === "POST") {
+      const restored = await restoreProject(config, restoreMatch[1]);
+      json(response, restored ? 200 : 404, restored ? { ok: true } : { error: "找不到该项目。" });
+      return;
+    }
+    const canvasMatch = /^\/api\/projects\/([0-9a-f-]+)\/canvases$/iu.exec(url.pathname);
+    const canvasId = url.searchParams.get("canvas") ?? "main";
+    if (canvasMatch && request.method === "POST") {
+      const payload = JSON.parse(await body(request, 8192)) as { name?: unknown };
+      const canvas = await createProjectCanvas(config, canvasMatch[1], typeof payload.name === "string" ? payload.name : "");
+      json(response, canvas ? 201 : 404, canvas ? { canvas } : { error: "Project not found." });
+      return;
+    }
     if (projectMatch && request.method === "GET") {
-      const project = await getProject(config, projectMatch[1] ?? "");
+      const project = await getProjectCanvas(config, projectMatch[1] ?? "", canvasId);
       json(response, project ? 200 : 404, project ? { project } : { error: "Project not found." });
       return;
     }
@@ -144,7 +159,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
         source: typeof payload.source === "string" ? payload.source : undefined,
         expectedRevision: typeof payload.expectedRevision === "number" ? payload.expectedRevision : undefined,
         thumbnailSvg: typeof payload.thumbnailSvg === "string" ? payload.thumbnailSvg : undefined
-      });
+      }, canvasId);
       if (result === "conflict") json(response, 409, { error: "Project revision conflict." });
       else json(response, result ? 200 : 404, result ? { project: result } : { error: "Project not found." });
       return;
@@ -156,7 +171,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     }
     const exportMatch = /^\/api\/projects\/([0-9a-f-]+)\/export\/(tex|svg|pdf)$/iu.exec(url.pathname);
     if (exportMatch && (request.method === "GET" || request.method === "POST")) {
-      const project = await getProject(config, exportMatch[1] ?? "");
+      const project = await getProjectCanvas(config, exportMatch[1] ?? "", canvasId);
       if (!project || project.deletedAt) { json(response, 404, { error: "Project not found." }); return; }
       const draft = request.method === "POST" ? JSON.parse(await body(request, config.maxSourceBytes + 16_384)) as { source?: unknown } : null;
       if (draft && (typeof draft.source !== "string" || Buffer.byteLength(draft.source, "utf8") > config.maxSourceBytes)) { json(response, 413, { error: "Invalid or oversized source." }); return; }
@@ -167,7 +182,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
           for (const key of referencedPngKeys(exportSource)) {
             if (!pngs.has(`assets/${key}`)) throw new Error(`缺少图片文件：assets/${key}`);
           }
-          const tex = createStandaloneDocument(exportSource, "xelatex");
+          const tex = createStandaloneDocument(exportSource, "xelatex", true);
           const picture = splitProjectSource(tex);
           const entries: Zippable = picture ? {
             "main.tex": strToU8(`${picture.prefix}\n\\input{figure.tikz}\n${picture.suffix}`),
@@ -186,10 +201,10 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       try {
         const pngs = await getReferencedProjectPngs(config, project.id, exportSource);
         if (exportMatch[2] === "svg") {
-          const result = await compileLatex(exportSource, config, "xelatex", pngs);
+          const result = await compileLatex(exportSource, config, "xelatex", pngs, true);
           attachment(response, "image/svg+xml; charset=utf-8", `${project.name}.svg`, result.svg);
         } else {
-          const result = await compileLatexPdf(exportSource, config, "xelatex", pngs);
+          const result = await compileLatexPdf(exportSource, config, "xelatex", pngs, true);
           attachment(response, "application/pdf", `${project.name}.pdf`, result.pdf);
         }
       } catch (error) {
@@ -239,7 +254,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       activeCompiles += 1;
       try {
         const pngs = await getReferencedProjectPngs(config, typeof payload.projectId === "string" ? payload.projectId : undefined, payload.source);
-        const result = await compileLatex(payload.source, config, payload.engine, pngs);
+        const result = await compileLatex(payload.source, config, payload.engine, pngs, typeof payload.projectId === "string");
         json(response, 200, { ok: true, ...result, sourceVersion: typeof payload.sourceVersion === "string" ? payload.sourceVersion : undefined });
       }
       catch (error) {

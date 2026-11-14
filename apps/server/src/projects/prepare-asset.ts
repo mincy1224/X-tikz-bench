@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DOMParser } from "@xmldom/xmldom";
 import { MAX_PNG_BYTES, readPngDimensions, type ProjectAsset } from "./png.js";
+import { assertSafeSvg } from "../latex/compiler.js";
 
 export type PreparedAsset = ProjectAsset & { data: Buffer; preview: Buffer | null };
 
@@ -65,8 +67,55 @@ async function makePdfPreview(data: Buffer): Promise<Buffer> {
   }
 }
 
-export async function prepareAsset(data: Buffer, name: string, extension: "png" | "pdf"): Promise<PreparedAsset> {
+async function svgToPdf(data: Buffer): Promise<Buffer> {
+  const svg = new TextDecoder("utf-8", { fatal: true }).decode(data);
+  assertSafeSvg(svg, MAX_PNG_BYTES);
+  if (/<\?xml-stylesheet|\bxml:base\s*=|@(?:import|font-face)\b/iu.test(svg)) {
+    throw new Error("SVG 素材不能引用外部资源。");
+  }
+  const document = new DOMParser({ onError: (_level, message) => { throw new Error(message); } }).parseFromString(svg, "image/svg+xml");
+  for (const element of Array.from(document.getElementsByTagName("*"))) {
+    for (const attribute of Array.from(element.attributes)) {
+      if ((attribute.localName === "href" || attribute.localName === "src") &&
+        !/^(?:#|data:image\/(?:png|jpeg|gif|webp);base64,|$)/iu.test(attribute.value.trim())) {
+        throw new Error("SVG 素材不能引用外部资源。");
+      }
+    }
+  }
+  const directory = await mkdtemp(path.join(tmpdir(), "tikz-svg-"));
+  try {
+    const input = path.join(directory, "input.svg");
+    const output = path.join(directory, "output.pdf");
+    await writeFile(input, svg, "utf8");
+    await new Promise<void>((resolve, reject) => {
+      const inkscape = process.env.TIKZ_INKSCAPE_BIN ?? (process.platform === "win32" ? "inkscape" : undefined);
+      const child = spawn(inkscape ?? process.env.TIKZ_RSVG_CONVERT_BIN ?? "rsvg-convert",
+        inkscape ? ["--export-type=pdf", `--export-filename=${output}`, input] : ["--format=pdf", "--output", output, input],
+        { cwd: directory, windowsHide: true, stdio: "ignore" });
+      const timeout = setTimeout(() => { child.kill(); reject(new Error("SVG 转换超时。")); }, 15_000);
+      child.once("error", (error: NodeJS.ErrnoException) => {
+        clearTimeout(timeout);
+        reject(error.code === "ENOENT" ? new Error("导入 SVG 需要 rsvg-convert（Ubuntu/WSL 的 librsvg2-bin）或 Inkscape（TIKZ_INKSCAPE_BIN）。") : error);
+      });
+      child.once("close", (code) => {
+        clearTimeout(timeout);
+        if (code === 0) resolve();
+        else reject(new Error("无法将 SVG 转为 PDF，请检查 SVG 文件。"));
+      });
+    });
+    if ((await stat(output)).size > MAX_PNG_BYTES) throw new Error("SVG 转成 PDF 后超过 10 MiB。");
+    return await readFile(output);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+export async function prepareAsset(data: Buffer, name: string, extension: "png" | "pdf" | "svg"): Promise<PreparedAsset> {
   if (data.length > MAX_PNG_BYTES) throw new Error("单张素材不能超过 10 MiB。");
+  if (extension === "svg") {
+    data = await svgToPdf(data);
+    extension = "pdf";
+  }
   if (extension === "pdf" && data.subarray(0, 5).toString("ascii") !== "%PDF-") throw new Error("无效的 PDF 素材。");
   const preview = extension === "pdf" ? await makePdfPreview(data) : null;
   const dimensions = readPngDimensions(preview ?? data);

@@ -2,6 +2,7 @@ import { useEditorStore } from "../store/store";
 import { readSimpleRectangle, rewriteSimpleRectangle } from "tikz-editor/edit/actions";
 import { resolvePropertyTargetFromParseResult } from "tikz-editor/edit/property-target";
 import css from "./App.module.css";
+import { useMatrixEditing } from "./canvas-panel/matrix-editing";
 
 export function ProjectShapeProperties() {
   const selected = useEditorStore((state) => state.selectedElementIds);
@@ -37,6 +38,10 @@ export function ProjectShapeProperties() {
     if (!cell && !canEditSize) return null;
     return <div className={css.projectObjectBar} role="group" aria-label={canEditSize ? "数组属性" : "单元格属性"}>
       <strong>{cell ? `单元格 ${target.row ?? ""}, ${target.column ?? ""}` : "数组布局"}</strong>
+      {cell ? <button type="button" onClick={() => {
+        useMatrixEditing.getState().leave();
+        useEditorStore.getState().dispatch({ type: "SELECT", id: matrixId, additive: false });
+      }}>选中整个数组</button> : null}
       {canEditSize && width && height ? <>
         {numberInput("格宽", Number(width[1]), (size) => { property(matrixId, "nodes", raw.replace(width[0], `minimum width=${size}pt`)); })}
         {numberInput("格高", Number(height[1]), (size) => { property(matrixId, "nodes", raw.replace(height[0], `minimum height=${size}pt`)); })}
