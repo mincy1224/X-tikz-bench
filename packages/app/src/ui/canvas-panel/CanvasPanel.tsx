@@ -1846,6 +1846,7 @@ export const CanvasPanel = memo(function CanvasPanel({
     matrixSelectionSourceIds,
     resizeFramesBySource,
     selectionBoxes,
+    selectionBoundsBySource,
     selectedAdornmentConnectors,
     adornmentHighlightBoxes,
     curveControlLines,
@@ -1866,6 +1867,9 @@ export const CanvasPanel = memo(function CanvasPanel({
     viewportSize,
     ROTATE_HANDLE_OFFSET_PX
   });
+
+  const multiSelectionBounds = useMemo(() => selectedElementIds.size > 1
+    ? mergeBoundsList([...selectionBoundsBySource.values()]) : null, [selectedElementIds, selectionBoundsBySource]);
 
   canvasTransformRef.current = canvasTransform;
   selectedElementIdsRef.current = selectedElementIds;
@@ -4040,6 +4044,8 @@ export const CanvasPanel = memo(function CanvasPanel({
         nodePositionLinks={nodePositionLinks}
         marqueeBounds={marqueeBounds}
         selectionBoxes={selectionBoxes}
+        multiSelectionBounds={multiSelectionBounds}
+        multiSelectionDragId={selectedElementIds.values().next().value ?? null}
         adornmentHighlightBoxes={adornmentHighlightBoxes}
         selectedAdornmentConnectors={selectedAdornmentConnectors}
         selectionStrokeWidth={selectionStrokeWidth}

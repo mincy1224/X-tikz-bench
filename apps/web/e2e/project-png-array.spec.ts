@@ -321,8 +321,10 @@ test("selecting an ungrouped drawing moves its matrix and other objects together
   await waitForHitRegions(page);
   await focusCanvas(page);
   await page.keyboard.press("Control+a");
-  const path = page.getByTestId("canvas-svg-layer").locator('path[data-source-id="path:0"]').first();
-  const box = (await path.boundingBox())!;
+  const selection = page.getByTestId("multi-selection-drag-area");
+  await expect(selection).toBeVisible();
+  const box = (await selection.boundingBox())!;
+  // Start in the empty space between the rectangle and matrix.
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 45, box.y + box.height / 2 - 25, { steps: 6 });

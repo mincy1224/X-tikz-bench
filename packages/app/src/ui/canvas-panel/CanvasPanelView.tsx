@@ -136,6 +136,8 @@ type CanvasPanelViewProps = {
   nodePositionLinks: readonly NodePositionLinkDisplay[];
   marqueeBounds: SvgBounds | null;
   selectionBoxes: readonly SelectionBoxDisplay[];
+  multiSelectionBounds: SvgBounds | null;
+  multiSelectionDragId: string | null;
   adornmentHighlightBoxes: readonly AdornmentHighlightBox[];
   selectedAdornmentConnectors: readonly AdornmentConnectorDisplay[];
   selectionStrokeWidth: number;
@@ -268,6 +270,8 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
     nodePositionLinks,
     marqueeBounds,
     selectionBoxes,
+    multiSelectionBounds,
+    multiSelectionDragId,
     adornmentHighlightBoxes,
     selectedAdornmentConnectors,
     selectionStrokeWidth,
@@ -703,6 +707,18 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
                   previewArrowPoints={previewArrowPoints}
                 />
 
+                {toolMode === "select" && multiSelectionBounds && multiSelectionDragId && (
+                  <rect data-testid="multi-selection-drag-area"
+                    x={multiSelectionBounds.minX} y={multiSelectionBounds.minY}
+                    width={multiSelectionBounds.maxX - multiSelectionBounds.minX}
+                    height={multiSelectionBounds.maxY - multiSelectionBounds.minY}
+                    fill="transparent" cursor="move"
+                    onPointerDown={(event) => {
+                      if (!event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+                        onElementPointerDown(event, multiSelectionDragId);
+                      }
+                    }} />
+                )}
                 <HitRegionLayer
                   hitRegions={hitRegions}
                   hoveredElementId={hoveredElementId}

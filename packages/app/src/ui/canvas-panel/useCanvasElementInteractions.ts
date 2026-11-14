@@ -154,13 +154,11 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
       draggedIds: string[],
       options: { adornmentDragFromText?: boolean } = {}
     ) => {
-      if (draggedIds.some((id) => !draggableSourceIds.has(id))) {
-        const reason = draggedIds
-          .map((id) => directManipulationDisabledReasonBySourceId?.get(id))
-          .find((candidate): candidate is string => Boolean(candidate && candidate.trim().length > 0));
-        if (reason) {
-          setWarning(reason);
-        }
+      const blockedReason = draggedIds
+        .map((id) => directManipulationDisabledReasonBySourceId?.get(id))
+        .find((reason): reason is string => Boolean(reason));
+      if (blockedReason) {
+        setWarning(blockedReason);
         setSnapLines([]);
         return;
       }
@@ -249,7 +247,6 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
       dispatch,
       canvasTransform.scale,
       directManipulationDisabledReasonBySourceId,
-      draggableSourceIds,
       logSnapDebug,
       scopeOverlay,
       setDragState,
@@ -430,8 +427,10 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
       const matrixCell = snapshot.scene?.elements.find((element) => element.sourceRef.sourceId === hitSourceId && element.matrixCell)?.matrixCell;
       const insideMatrix = matrixCell && matrixEditing.documentId === documentId && matrixEditing.matrixId === matrixCell.matrixSourceId;
       if (matrixEditing.matrixId && !insideMatrix && matrixEdgeSelection?.matrixSourceId !== matrixEditing.matrixId) matrixEditing.leave();
-      const resolvedTargetId = resolveScopeAwarePointerDownTarget({
-        hitTargetId: matrixCell && !insideMatrix ? matrixCell.matrixSourceId : targetId,
+      const hitTargetId = matrixCell && !insideMatrix ? matrixCell.matrixSourceId : targetId;
+      const resolvedTargetId = !additiveSelection && selectedElementIds.size > 1 && selectedElementIds.has(hitTargetId)
+        ? hitTargetId : resolveScopeAwarePointerDownTarget({
+        hitTargetId,
         hitSourceId: matrixCell && !insideMatrix ? matrixCell.matrixSourceId : hitSourceId,
         scopeOverlay,
         focusedScopeId
