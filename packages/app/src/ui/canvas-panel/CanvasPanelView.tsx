@@ -391,12 +391,13 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
     const extent = (horizontal ? svgResult.viewBox.width : svgResult.viewBox.height) * canvasTransform.scale;
     if (visible <= 0 || extent <= visible + 1) return null;
     const key = horizontal ? "translateX" : "translateY";
-    const maximum = -canvasPanRange(visible, extent).min;
+    const range = canvasPanRange(visible, extent);
+    const maximum = range.max - range.min;
     return <input key={axis} type="range" className={horizontal ? css.canvasScrollX : css.canvasScrollY}
       aria-label={horizontal ? "水平滚动画布" : "垂直滚动画布"}
       style={{ "--canvas-scroll-thumb": `${Math.max(24, (visible - 22) * visible / extent)}px` } as CSSProperties}
-      min={0} max={maximum} value={Math.min(maximum, Math.max(0, -canvasTransform[key]))}
-      onChange={(event) => { onCanvasScroll({ ...canvasTransform, [key]: -event.currentTarget.valueAsNumber }); }} />;
+      min={0} max={maximum} value={Math.min(maximum, Math.max(0, range.max - canvasTransform[key]))}
+      onChange={(event) => { onCanvasScroll({ ...canvasTransform, [key]: range.max - event.currentTarget.valueAsNumber }); }} />;
   }) : null;
   return (
     <div className={css.panel}>

@@ -96,11 +96,12 @@ let textEnginePromise: Promise<NodeTextEngine | null> | null = null;
 let hasResolvedTextEngine = false;
 let resolvedTextEngine: NodeTextEngine | null = null;
 
-function resolveSvgPadding(source: string, activeFigureId: string | null | undefined): number {
+function resolveSvgPadding(source: string, activeFigureId: string | null | undefined, project?: boolean): number {
+  const padding = project ? 36 : 18;
   try {
-    return resolveFigureBoundsState(source, { activeFigureId }).mode === "fixed" ? 0 : 18;
+    return resolveFigureBoundsState(source, { activeFigureId }).mode === "fixed" ? 0 : padding;
   } catch {
-    return 18;
+    return padding;
   }
 }
 let currentMathJaxFont: MathJaxFont = "mathjax-newcm";
@@ -235,7 +236,7 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
         includeContextDefinitions: true
       },
       evaluate: { sourceFingerprint, projectColors: request.projectColors },
-      svg: { padding: resolveSvgPadding(request.source, request.activeFigureId) },
+      svg: { padding: resolveSvgPadding(request.source, request.activeFigureId, request.preferNativeSerif) },
       textEngine
     });
     phases.render = performance.now() - phaseStartedAt;
@@ -367,7 +368,7 @@ async function computeSnapshotIncremental(
   });
   phases.parse = performance.now() - phaseStartedAt;
   const parseResult = parseIncremental.parse;
-  const svgPadding = resolveSvgPadding(parseResult.source, parseResult.activeFigureId);
+  const svgPadding = resolveSvgPadding(parseResult.source, parseResult.activeFigureId, preferNativeSerif);
   phaseStartedAt = performance.now();
   const session = getIncrementalSemanticSession();
   phases.getSemanticSession = performance.now() - phaseStartedAt;

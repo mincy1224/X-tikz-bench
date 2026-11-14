@@ -2,6 +2,7 @@ import type { EditAction } from "tikz-editor/edit/actions";
 import type { SnapLine } from "tikz-editor/edit/snapping";
 import type { EditHandle, NodeAnchorTarget, SceneElement } from "tikz-editor/semantic/types";
 import type { SvgViewBox } from "tikz-editor/svg/index";
+import type { WorldBounds } from "tikz-editor/coords/index";
 
 import type { ScopeOverlayIndex } from "./scope-overlay";
 import type { MatrixCellAnchorHint } from "./endpoint-anchor-snap";
@@ -26,6 +27,7 @@ export type UseCanvasDragControllerParams = {
   dispatch: (action: EditorAction) => void;
   dispatchCanvasTransform: (transform: { translateX: number; translateY: number; scale: number }) => void;
   logSnapDebug: (input: SnapDebugLogInput) => void;
+  setDragPageBounds?: (bounds: WorldBounds) => void;
   queueSelectionForAddedElement: (preferredWorld: WorldPoint, preferredSourceId?: string) => void;
   snapshotSource: string;
   snapshotScene: { elements: SceneElement[] } | null;

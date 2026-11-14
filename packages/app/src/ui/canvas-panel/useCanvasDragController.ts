@@ -102,6 +102,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
     dispatch,
     dispatchCanvasTransform,
     logSnapDebug,
+    setDragPageBounds,
     queueSelectionForAddedElement,
     snapshotSource,
     snapshotScene,
@@ -850,6 +851,13 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
         if (drag.transaction && drag.translation) {
           try {
             previewTranslation(drag.transaction, drag.translation, drag.visualTranslation, makeWorldPoint(totalDelta.x, totalDelta.y));
+            const bounds = drag.initialSelection?.bounds;
+            if (bounds && drag.visualTranslation) {
+              setDragPageBounds?.(worldBounds(
+                pt(bounds.minX + totalDelta.x), pt(bounds.minY + totalDelta.y),
+                pt(bounds.maxX + totalDelta.x), pt(bounds.maxY + totalDelta.y)
+              ));
+            }
             drag.lastAppliedTotalDelta = totalDelta;
           } catch (error) { drag.visualTranslation?.restore(); drag.transaction.finish(true); setDragState(null); setSnapLines([]); setWarning(error instanceof Error ? error.message : String(error)); }
           return;
@@ -1312,6 +1320,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
     interactionSvgRef,
     liveResizeFramesRef,
     logSnapDebug,
+    setDragPageBounds,
     onSnapFeedback,
     pendingAddedSelectionRef,
     queueSelectionForAddedElement,

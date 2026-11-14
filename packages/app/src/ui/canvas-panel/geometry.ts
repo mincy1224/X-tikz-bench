@@ -12,7 +12,7 @@ import {
   worldToSvg as typedWorldToSvg
 } from "../coords/convert";
 import type { ClientPoint, SvgPoint, TextRectLocalPoint, ViewportPoint, WorldPoint } from "../coords/types";
-import type { WorldVector } from "tikz-editor/coords/index";
+import { worldToSvgBounds, type WorldBounds, type WorldVector } from "tikz-editor/coords/index";
 
 export type RulerTick = {
   viewportPos: number;
@@ -23,10 +23,21 @@ export type RulerTick = {
 /** Keep the page within a small margin at fit, or between its edges when zoomed in. */
 export function canvasPanRange(viewportSize: number, pageSize: number): { min: number; max: number } {
   const spare = viewportSize - pageSize;
-  if (spare < 0) return { min: Math.floor(spare), max: 0 };
+  if (spare < 0) return { min: Math.floor(spare) - 24, max: 24 };
   const center = spare / 2;
-  const margin = Math.min(center, 48);
+  const margin = Math.min(center, 96);
   return { min: center - margin, max: center + margin };
+}
+
+export function expandCanvasPage(viewBox: SvgViewBox, bounds: WorldBounds, padding: number): SvgViewBox {
+  const svg = worldToSvgBounds(bounds, viewBox);
+  const left = Math.max(0, viewBox.x - svg.minX + padding);
+  const right = Math.max(0, svg.maxX + padding - viewBox.x - viewBox.width);
+  // Symmetric growth keeps the world-to-SVG Y origin and existing SVG paths stable.
+  const vertical = Math.max(0, viewBox.y - svg.minY + padding, svg.maxY + padding - viewBox.y - viewBox.height);
+  if (left === 0 && right === 0 && vertical === 0) return viewBox;
+  return { x: viewBox.x - left, y: viewBox.y - vertical,
+    width: viewBox.width + left + right, height: viewBox.height + 2 * vertical };
 }
 
 export type VisibleRanges = {

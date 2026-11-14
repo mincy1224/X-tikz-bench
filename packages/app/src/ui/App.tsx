@@ -1012,7 +1012,8 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
   } else if (!isDragComputeTrigger) {
     dragRenderViewBoxRef.current = null;
   }
-  const renderViewBox = isDragComputeTrigger ? dragRenderViewBoxRef.current ?? null : null;
+  const renderViewBox = isDragComputeTrigger && (!project || gestureTrigger !== "other")
+    ? dragRenderViewBoxRef.current ?? null : null;
   const typingComputeDelay = trigger === "other" && changedSourceIds == null
     ? (source.length > 80_000 ? 220 : 120)
     : null;

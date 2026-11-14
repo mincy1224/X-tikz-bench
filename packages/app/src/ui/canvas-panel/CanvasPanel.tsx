@@ -75,6 +75,7 @@ generateFreehandToolSource
 import {
 clamp,
 canvasPanRange,
+expandCanvasPage,
 clientToSvgPoint,
 viewportToSvgPoint,
 viewportToWorldPoint,
@@ -159,6 +160,8 @@ import { useCanvasViewportEffects } from "./useCanvasViewportEffects";
 import { useCanvasViewportPersistence } from "./useCanvasViewportPersistence";
 import { useBucketFillPreview,type BucketPreviewSession } from "./useBucketFillPreview";
 import type { ClientPoint,SvgBounds,ViewportPoint,WorldPoint } from "../coords/types";
+import type { WorldBounds } from "tikz-editor/coords/index";
+import { resolveFigureBoundsState } from "tikz-editor/edit/figure-bounds";
 import { useEditorCommandRuntime,type CommandOrigin } from "../editor-command-runtime";
 import {
 formatEquationText,
@@ -893,15 +896,28 @@ export const CanvasPanel = memo(function CanvasPanel({
   );
   const [guidePreview, setGuidePreview] = useState<GuidePreview | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [dragPageBounds, setDragPageBounds] = useState<WorldBounds | null>(null);
+  const fixedProjectPage = useMemo(() => {
+    if (projectId === null || !snapshot.parseResult) return false;
+    return resolveFigureBoundsState(snapshot.source, { activeFigureId }).mode === "fixed";
+  }, [projectId, snapshot.parseResult, snapshot.source, activeFigureId]);
+  const pageSvgResult = useMemo(() => {
+    if (!baseSvgResult || fixedProjectPage || projectId === null ||
+      (!activeCanvasDragKind && snapshot.source === source)) return baseSvgResult;
+    let viewBox = baseSvgResult.viewBox;
+    if (snapshot.scene?.bounds) viewBox = expandCanvasPage(viewBox, snapshot.scene.bounds, 36);
+    if (dragPageBounds) viewBox = expandCanvasPage(viewBox, dragPageBounds, 36);
+    return viewBox === baseSvgResult.viewBox ? baseSvgResult : { ...baseSvgResult, viewBox };
+  }, [activeCanvasDragKind, baseSvgResult, dragPageBounds, fixedProjectPage, projectId, snapshot.scene, snapshot.source, source]);
   const svgResult = useMemo(() => {
-    if (!baseSvgResult || showDocumentBounds) {
-      return baseSvgResult;
+    if (!pageSvgResult || showDocumentBounds) {
+      return pageSvgResult;
     }
     return {
-      ...baseSvgResult,
-      viewBox: expandSvgViewBox(baseSvgResult.viewBox, viewportSize, canvasTransform.scale)
+      ...pageSvgResult,
+      viewBox: expandSvgViewBox(pageSvgResult.viewBox, viewportSize, canvasTransform.scale)
     };
-  }, [baseSvgResult, canvasTransform.scale, showDocumentBounds, viewportSize]);
+  }, [pageSvgResult, canvasTransform.scale, showDocumentBounds, viewportSize]);
   const svgModel = useMemo(() => {
     if (!baseSvgModel || !svgResult) {
       return baseSvgModel;
@@ -1144,8 +1160,10 @@ export const CanvasPanel = memo(function CanvasPanel({
   const dispatchCanvasTransform = useCallback(
     (requested: CanvasTransform) => {
       let transform = requested;
-      if (projectId !== null && baseSvgResult && svgResult && viewportSize.width > 0 && viewportSize.height > 0) {
-        const page = baseSvgResult.viewBox;
+      const ui = useEditorStore.getState();
+      const editing = ui.activeCanvasDragKind && ui.activeCanvasDragKind !== "pan" && ui.activeCanvasDragKind !== "marquee";
+      if (projectId !== null && !editing && pageSvgResult && svgResult && viewportSize.width > 0 && viewportSize.height > 0) {
+        const page = pageSvgResult.viewBox;
         const view = svgResult.viewBox;
         const x = canvasPanRange(viewportSize.width, page.width * requested.scale);
         const y = canvasPanRange(viewportSize.height, page.height * requested.scale);
@@ -1157,7 +1175,7 @@ export const CanvasPanel = memo(function CanvasPanel({
           translateY: clamp(requested.translateY + offsetY, y.min, y.max) - offsetY
         };
       }
-      const current = useEditorStore.getState().canvasTransform;
+      const current = ui.canvasTransform;
       if (
         Math.abs(transform.translateX - current.translateX) < 1e-9 &&
         Math.abs(transform.translateY - current.translateY) < 1e-9 &&
@@ -1167,7 +1185,7 @@ export const CanvasPanel = memo(function CanvasPanel({
       }
       dispatch({ type: "SET_CANVAS_TRANSFORM", transform });
     },
-    [baseSvgResult, svgResult, viewportSize, projectId, dispatch]
+    [pageSvgResult, svgResult, viewportSize, projectId, dispatch]
   );
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -1275,7 +1293,9 @@ export const CanvasPanel = memo(function CanvasPanel({
   const setDragState = useCallback(
     (next: DragState | null) => {
       dragRef.current = next;
-      if (!next) {
+      if (next) {
+        setDragPageBounds(null);
+      } else {
         setNodeAnchorOverlay(null);
         setDragTooltip(null);
       }
@@ -1919,10 +1939,6 @@ export const CanvasPanel = memo(function CanvasPanel({
     MIN_SCALE,
     MAX_SCALE
   });
-
-  useLayoutEffect(() => {
-    if (projectId !== null) dispatchCanvasTransform(useEditorStore.getState().canvasTransform);
-  }, [dispatchCanvasTransform, projectId, canvasTransform]);
 
   const copyWarningToClipboard = useCallback(() => {
     if (!warning) {
@@ -3433,6 +3449,13 @@ export const CanvasPanel = memo(function CanvasPanel({
     setFitToContentModeActive
   });
 
+  useLayoutEffect(() => {
+    if (projectId !== null && !activeCanvasDragKind) {
+      if (snapshot.source === source) setDragPageBounds(null);
+      dispatchCanvasTransform(useEditorStore.getState().canvasTransform);
+    }
+  }, [activeCanvasDragKind, dispatchCanvasTransform, projectId, canvasTransform, snapshot.source, source]);
+
   useCanvasGuideEffects({
     guideDragRef,
     setGuidePreview,
@@ -3669,6 +3692,7 @@ export const CanvasPanel = memo(function CanvasPanel({
     dispatch,
     dispatchCanvasTransform,
     logSnapDebug,
+    setDragPageBounds: projectId === null || fixedProjectPage ? undefined : setDragPageBounds,
     queueSelectionForAddedElement,
     snapshotSource: snapshot.source,
     snapshotScene: snapshot.scene,
@@ -3714,6 +3738,8 @@ export const CanvasPanel = memo(function CanvasPanel({
     dispatch,
     dispatchCanvasTransform,
     dragRef,
+    fixedProjectPage,
+    projectId,
     finalizeFreehandDraft,
     interactionSvgRef,
     liveResizeFramesRef,

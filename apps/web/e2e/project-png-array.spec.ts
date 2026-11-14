@@ -263,17 +263,17 @@ test("canvas panning stops at the page edges and keeps fitted drawings nearby", 
   const maxX = Number(await horizontal.getAttribute("max"));
   const maxY = Number(await vertical.getAttribute("max"));
   await page.mouse.wheel(100_000, 100_000);
-  await expect(stage).toHaveAttribute("data-canvas-translate-x", String(-maxX));
-  await expect(stage).toHaveAttribute("data-canvas-translate-y", String(-maxY));
+  await expect(stage).toHaveAttribute("data-canvas-translate-x", String(24 - maxX));
+  await expect(stage).toHaveAttribute("data-canvas-translate-y", String(24 - maxY));
   await page.mouse.wheel(-100_000, -100_000);
-  await expect(stage).toHaveAttribute("data-canvas-translate-x", "0");
-  await expect(stage).toHaveAttribute("data-canvas-translate-y", "0");
+  await expect(stage).toHaveAttribute("data-canvas-translate-x", "24");
+  await expect(stage).toHaveAttribute("data-canvas-translate-y", "24");
   await horizontal.focus();
   await page.keyboard.press("End");
-  await expect(stage).toHaveAttribute("data-canvas-translate-x", String(-maxX));
+  await expect(stage).toHaveAttribute("data-canvas-translate-x", String(24 - maxX));
   await vertical.focus();
   await page.keyboard.press("End");
-  await expect(stage).toHaveAttribute("data-canvas-translate-y", String(-maxY));
+  await expect(stage).toHaveAttribute("data-canvas-translate-y", String(24 - maxY));
 
   await page.getByRole("button", { name: "Fit to content" }).click();
   await expect(horizontal).toHaveCount(0);
@@ -285,7 +285,32 @@ test("canvas panning stops at the page edges and keeps fitted drawings nearby", 
     const x = Number(await stage.getAttribute("data-canvas-translate-x"));
     const y = Number(await stage.getAttribute("data-canvas-translate-y"));
     return Math.max(Math.abs(x - fittedX), Math.abs(y - fittedY));
-  }).toBeLessThanOrEqual(49);
+  }).toBeLessThanOrEqual(97);
+});
+
+test("the automatic page grows before releasing a moved object", async ({ page }) => {
+  await gotoApp(page);
+  await setSource(page, String.raw`\fill[blue] (0,0) rectangle (1,1);`);
+  await waitForHitRegions(page);
+  const stage = page.getByTestId("canvas-world-stage");
+  const viewport = page.getByTestId("canvas-viewport");
+  const drawing = page.getByTestId("canvas-svg-layer").locator("path[data-source-id]").first();
+  await expect(drawing).toBeVisible();
+  await page.getByRole("combobox", { name: "Zoom percentage" }).selectOption("100");
+  const drawingBox = (await drawing.boundingBox())!;
+  const viewportBox = (await viewport.boundingBox())!;
+  const originalWidth = (await stage.boundingBox())!.width;
+  const originalSource = await readSource(page);
+  await page.mouse.move(drawingBox.x + drawingBox.width / 2, drawingBox.y + drawingBox.height / 2);
+  await page.mouse.down();
+  try {
+    await page.mouse.move(viewportBox.x + viewportBox.width - 28, drawingBox.y + drawingBox.height / 2, { steps: 8 });
+    await expect.poll(async () => (await stage.boundingBox())!.width).toBeGreaterThan(originalWidth + 20);
+  } finally {
+    await page.mouse.up();
+  }
+  await expect.poll(() => readSource(page)).not.toBe(originalSource);
+  await expect.poll(async () => (await stage.boundingBox())!.width).toBeLessThan(originalWidth + 2);
 });
 
 test("the dashboard searches projects and restores them from trash", async ({ page, request }) => {
