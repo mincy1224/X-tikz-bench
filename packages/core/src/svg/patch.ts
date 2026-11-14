@@ -13,6 +13,11 @@ export function diffSvgModels(
     return [{ kind: "replaceAll", model: next }];
   }
 
+  // Canvas expansion can change just the viewport while reusing the scene.
+  if (previous.parts === next.parts && previous.defs === next.defs && previous.defsFingerprint === next.defsFingerprint) {
+    return sameViewBox(previous.viewBox, next.viewBox) ? [] : [{ kind: "setViewBox", viewBox: next.viewBox }];
+  }
+
   if (!hasValidModelInvariants(previous) || !hasValidModelInvariants(next)) {
     return [{ kind: "replaceAll", model: next }];
   }

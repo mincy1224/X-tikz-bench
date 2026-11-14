@@ -313,6 +313,47 @@ test("the automatic page grows before releasing a moved object", async ({ page }
   await expect.poll(async () => (await stage.boundingBox())!.width).toBeLessThan(originalWidth + 2);
 });
 
+test("selecting an ungrouped drawing moves its matrix and other objects together", async ({ page }) => {
+  await gotoApp(page);
+  const source = String.raw`\fill[blue] (0,0) rectangle (1,1);
+\matrix[matrix of nodes, nodes={draw}] at (3,0) {A & B \\};`;
+  await setSource(page, source);
+  await waitForHitRegions(page);
+  await focusCanvas(page);
+  await page.keyboard.press("Control+a");
+  const path = page.getByTestId("canvas-svg-layer").locator('path[data-source-id="path:0"]').first();
+  const box = (await path.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 45, box.y + box.height / 2 - 25, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => readSource(page)).not.toBe(source);
+  const moved = await readSource(page);
+  expect(moved).not.toContain("(0,0) rectangle");
+  expect(moved).not.toContain("at (3,0)");
+});
+
+test("rectangle resize previews the edge before writing the source on release", async ({ page }) => {
+  await gotoApp(page);
+  const source = String.raw`\fill[blue] (0,0) rectangle (2,2);`;
+  await setSource(page, source);
+  await waitForHitRegions(page);
+  await selectFirstCanvasElement(page);
+  const corner = page.locator('[data-resize-role="top-right"]').first();
+  const box = (await corner.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  try {
+    await page.mouse.move(box.x + box.width / 2 + 45, box.y + box.height / 2 - 18, { steps: 6 });
+    await expect(page.locator("[data-resize-preview]")).toHaveAttribute("points", /[\d, ]+/u);
+    expect(await readSource(page)).toBe(source);
+  } finally {
+    await page.mouse.up();
+  }
+  await expect.poll(() => readSource(page)).not.toBe(source);
+  await expect(page.locator("[data-resize-preview]")).not.toHaveAttribute("points", /./u);
+});
+
 test("the dashboard searches projects and restores them from trash", async ({ page, request }) => {
   const name = `Dashboard ${Date.now()}`;
   const result = await request.post("/api/projects", { data: { name, description: "distinctive search text" } });

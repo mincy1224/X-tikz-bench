@@ -1,4 +1,4 @@
-import { measureResize, previewResize } from "./resize-executor";
+import { measureResize, previewResize, resizePreviewCorners } from "./resize-executor";
 import { planRotation, previewRotation } from "./rotation-executor";
 import { previewTranslation, commitTranslationPreview } from "./translation-executor";
 import { useResizePreference } from "../resize-preference";
@@ -103,6 +103,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
     dispatchCanvasTransform,
     logSnapDebug,
     setDragPageBounds,
+    deferResize,
     queueSelectionForAddedElement,
     snapshotSource,
     snapshotScene,
@@ -159,6 +160,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
   }, [source, dragRef, setDragState, setSnapLines]);
   useEffect(() => {
     const drag = dragRef.current;
+    if (drag?.kind !== "resize") interactionSvgRef.current?.querySelector("[data-resize-preview]")?.removeAttribute("points");
     if ((drag?.kind === "resize" || drag?.kind === "rotate") && !drag.transaction.valid()) {
       drag.transaction.finish(true); setDragState(null); setSnapLines([]);
     }
@@ -227,11 +229,13 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
         worldToSvgPoint(drag.startWorld, currentSvg.viewBox),
         worldToSvgPoint(world, currentSvg.viewBox)
       );
-      const hitIds = resolveScopeAwareMarqueeSelection({
+      const matrixOwners = new Map(snapshotScene?.elements.flatMap((element) => element.matrixCell
+        ? [[element.sourceRef.sourceId, element.matrixCell.matrixSourceId] as const] : []));
+      const hitIds = [...new Set(resolveScopeAwareMarqueeSelection({
         selectionBounds: selection,
         sourceBoundsById: sourceBoundsSvgRef.current,
         scopeOverlay
-      });
+      }).map((id) => matrixOwners.get(id) ?? id))];
       const nextIds = drag.additive
         ? [...new Set([...drag.baseSelectedIds, ...hitIds])]
         : hitIds;
@@ -550,8 +554,9 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
         const lines = snapped?.lines ?? [];
         setSnapLines(lines);
         maybeTriggerSnapFeedback(lines.length > 0);
-        const liveFrame = snapped ? null : liveResizeFramesRef.current.get(drag.elementId) ?? null;
-        const dimensions = measureResize(drag, nextWorld, event.shiftKey, liveFrame);
+        const scaleContents = useResizePreference.getState().whole;
+        const liveFrame = snapped || deferResize ? null : liveResizeFramesRef.current.get(drag.elementId) ?? null;
+        const dimensions = measureResize(drag, nextWorld, event.shiftKey || scaleContents, liveFrame);
         setDragTooltip({
           kind: "resize",
           anchor: clientPointFromEvent(event),
@@ -566,7 +571,21 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
           lines
         });
 
-        try { previewResize(drag, nextWorld, event.shiftKey, useResizePreference.getState().whole, reference, { activeFigureId: useEditorStore.getState().activeFigureId }, formatPrecision); }
+        if (deferResize) {
+          drag.deferredResize = { world: nextWorld, shift: event.shiftKey, scaleContents, precision: formatPrecision };
+          const corners = resizePreviewCorners(drag, nextWorld, event.shiftKey, scaleContents);
+          const points = corners.map((corner) => {
+            const svg = worldToSvgPoint(corner, svgResult.viewBox);
+            return `${svg.x},${svg.y}`;
+          });
+          interactionSvgRef.current?.querySelector("[data-resize-preview]")?.setAttribute("points", points.join(" "));
+          setDragPageBounds?.(worldBounds(
+            pt(Math.min(...corners.map((corner) => corner.x))), pt(Math.min(...corners.map((corner) => corner.y))),
+            pt(Math.max(...corners.map((corner) => corner.x))), pt(Math.max(...corners.map((corner) => corner.y)))
+          ));
+          return;
+        }
+        try { previewResize(drag, nextWorld, event.shiftKey, scaleContents, reference, { activeFigureId: useEditorStore.getState().activeFigureId }, formatPrecision); }
         catch (error) {
           setWarning(error instanceof Error ? error.message : String(error));
           if (!drag.transaction.valid()) { drag.transaction.finish(true); setDragState(null); }
@@ -1228,6 +1247,18 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
           } catch (error) { drag.visualTranslation.restore(); setWarning(error instanceof Error ? error.message : String(error)); }
         }
       }
+      if (drag.kind === "resize") {
+        interactionSvgRef.current?.querySelector("[data-resize-preview]")?.removeAttribute("points");
+        const resize = drag.deferredResize;
+        if (resize && event.type !== "pointercancel") {
+          try {
+            previewResize(drag, resize.world, resize.shift, resize.scaleContents, resizeFrameWorldBounds(drag.initialFrame),
+              { activeFigureId: useEditorStore.getState().activeFigureId }, resize.precision);
+          } catch (error) {
+            setWarning(error instanceof Error ? error.message : String(error));
+          }
+        }
+      }
       if (drag.kind === "element" || drag.kind === "resize" || drag.kind === "rotate") drag.transaction?.finish(event.type === "pointercancel");
       setNodeAnchorOverlay(null);
       setSnapLines([]);
@@ -1321,6 +1352,7 @@ export function useCanvasDragController(params: UseCanvasDragControllerParams) {
     liveResizeFramesRef,
     logSnapDebug,
     setDragPageBounds,
+    deferResize,
     onSnapFeedback,
     pendingAddedSelectionRef,
     queueSelectionForAddedElement,

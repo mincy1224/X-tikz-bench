@@ -896,7 +896,15 @@ export const CanvasPanel = memo(function CanvasPanel({
   );
   const [guidePreview, setGuidePreview] = useState<GuidePreview | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
-  const [dragPageBounds, setDragPageBounds] = useState<WorldBounds | null>(null);
+  const [dragPageViewBox, setDragPageViewBox] = useState<SvgViewBox | null>(null);
+  const growDragPage = useCallback((bounds: WorldBounds) => {
+    if (!baseSvgResult) return;
+    setDragPageViewBox((current) => {
+      const previous = current ?? baseSvgResult.viewBox;
+      const expanded = expandCanvasPage(previous, bounds, 36, 24);
+      return expanded === previous ? current : expanded;
+    });
+  }, [baseSvgResult]);
   const fixedProjectPage = useMemo(() => {
     if (projectId === null || !snapshot.parseResult) return false;
     return resolveFigureBoundsState(snapshot.source, { activeFigureId }).mode === "fixed";
@@ -904,11 +912,10 @@ export const CanvasPanel = memo(function CanvasPanel({
   const pageSvgResult = useMemo(() => {
     if (!baseSvgResult || fixedProjectPage || projectId === null ||
       (!activeCanvasDragKind && snapshot.source === source)) return baseSvgResult;
-    let viewBox = baseSvgResult.viewBox;
-    if (snapshot.scene?.bounds) viewBox = expandCanvasPage(viewBox, snapshot.scene.bounds, 36);
-    if (dragPageBounds) viewBox = expandCanvasPage(viewBox, dragPageBounds, 36);
+    let viewBox = dragPageViewBox ?? baseSvgResult.viewBox;
+    if (snapshot.scene?.bounds) viewBox = expandCanvasPage(viewBox, snapshot.scene.bounds, 36, 24);
     return viewBox === baseSvgResult.viewBox ? baseSvgResult : { ...baseSvgResult, viewBox };
-  }, [activeCanvasDragKind, baseSvgResult, dragPageBounds, fixedProjectPage, projectId, snapshot.scene, snapshot.source, source]);
+  }, [activeCanvasDragKind, baseSvgResult, dragPageViewBox, fixedProjectPage, projectId, snapshot.scene, snapshot.source, source]);
   const svgResult = useMemo(() => {
     if (!pageSvgResult || showDocumentBounds) {
       return pageSvgResult;
@@ -1294,7 +1301,7 @@ export const CanvasPanel = memo(function CanvasPanel({
     (next: DragState | null) => {
       dragRef.current = next;
       if (next) {
-        setDragPageBounds(null);
+        setDragPageViewBox(null);
       } else {
         setNodeAnchorOverlay(null);
         setDragTooltip(null);
@@ -3451,7 +3458,7 @@ export const CanvasPanel = memo(function CanvasPanel({
 
   useLayoutEffect(() => {
     if (projectId !== null && !activeCanvasDragKind) {
-      if (snapshot.source === source) setDragPageBounds(null);
+      if (snapshot.source === source) setDragPageViewBox(null);
       dispatchCanvasTransform(useEditorStore.getState().canvasTransform);
     }
   }, [activeCanvasDragKind, dispatchCanvasTransform, projectId, canvasTransform, snapshot.source, source]);
@@ -3692,7 +3699,8 @@ export const CanvasPanel = memo(function CanvasPanel({
     dispatch,
     dispatchCanvasTransform,
     logSnapDebug,
-    setDragPageBounds: projectId === null || fixedProjectPage ? undefined : setDragPageBounds,
+    setDragPageBounds: projectId === null || fixedProjectPage ? undefined : growDragPage,
+    deferResize: projectId !== null,
     queueSelectionForAddedElement,
     snapshotSource: snapshot.source,
     snapshotScene: snapshot.scene,
@@ -3739,6 +3747,7 @@ export const CanvasPanel = memo(function CanvasPanel({
     dispatchCanvasTransform,
     dragRef,
     fixedProjectPage,
+    growDragPage,
     projectId,
     finalizeFreehandDraft,
     interactionSvgRef,

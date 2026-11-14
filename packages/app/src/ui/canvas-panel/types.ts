@@ -161,6 +161,7 @@ export type DragState =
   | {
       kind: "resize";
       transaction: SourceEditTransaction;
+      deferredResize?: { world: WorldPoint; shift: boolean; scaleContents: boolean; precision?: "fine" };
       pointerId: number;
       elementId: string;
       role: ResizeRole;

@@ -28,6 +28,7 @@ export type UseCanvasDragControllerParams = {
   dispatchCanvasTransform: (transform: { translateX: number; translateY: number; scale: number }) => void;
   logSnapDebug: (input: SnapDebugLogInput) => void;
   setDragPageBounds?: (bounds: WorldBounds) => void;
+  deferResize?: boolean;
   queueSelectionForAddedElement: (preferredWorld: WorldPoint, preferredSourceId?: string) => void;
   snapshotSource: string;
   snapshotScene: { elements: SceneElement[] } | null;

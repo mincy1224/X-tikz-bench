@@ -1519,7 +1519,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       selectAllElements: () => {
         const ids = Array.from(
           new Set(
-            (snapshotRef.current.scene?.elements ?? []).map((element) => element.sourceRef.sourceId)
+            (snapshotRef.current.scene?.elements ?? []).map((element) => element.matrixCell?.matrixSourceId ?? element.sourceRef.sourceId)
           )
         );
         dispatch({ type: "SELECT_RANGE", ids });
@@ -1797,7 +1797,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
           }
           const ids = Array.from(
             new Set(
-              (snapshotRef.current.scene?.elements ?? []).map((element) => element.sourceRef.sourceId)
+              (snapshotRef.current.scene?.elements ?? []).map((element) => element.matrixCell?.matrixSourceId ?? element.sourceRef.sourceId)
             )
           );
           dispatch({ type: "SELECT_RANGE", ids });

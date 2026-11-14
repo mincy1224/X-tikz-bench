@@ -181,10 +181,11 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
 
       const snapExcludedSourceIds = collectSnapExcludedSourceIds(draggedIds, scopeOverlay, snapshot.scene?.elements);
 
+      const arrangeBounds = collectArrangeWorldBounds(snapshot.scene?.elements ?? [], snapshot.parseResult?.figure.body ?? []);
       const snapContext = snapshot.scene
         ? buildSnapContext({
             sceneElements: snapshot.scene.elements,
-            referenceBounds: collectArrangeWorldBounds(snapshot.scene.elements, snapshot.parseResult?.figure.body ?? []),
+            referenceBounds: arrangeBounds,
             selectedSourceIds: snapExcludedSourceIds,
             guides: snapGuideInput,
             settings: snapSettingsPatch,
@@ -192,7 +193,7 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
             viewportWorld: viewportWorldBounds
           })
         : null;
-      const worldInteractionBoundsBySource = new Map<string, SnapBounds>([...collectArrangeWorldBounds(snapshot.scene?.elements ?? [], snapshot.parseResult?.figure.body ?? [])].map(([sourceId, bounds]) => [sourceId, { ...bounds, sourceId }]));
+      const worldInteractionBoundsBySource = new Map<string, SnapBounds>([...arrangeBounds].map(([sourceId, bounds]) => [sourceId, { ...bounds, sourceId }]));
 
       const initialSelection = collectSelectionGeometryFromBounds(worldInteractionBoundsBySource, draggedIds);
       const selectionAnchorRatio = initialSelection
@@ -467,7 +468,8 @@ export function useCanvasElementInteractions(args: UseCanvasElementInteractionsA
       }
 
       const textTarget = (!matrixCell || insideMatrix) && resolvedTargetId === targetId ? resolveEditableTextTarget(targetId, region) : null;
-      if (!additiveSelection && textTarget) {
+      // An already selected label is a drag surface for a multi-selection.
+      if (!additiveSelection && textTarget && !(alreadySelected && selectedElementIds.size > 1)) {
         const draggedIds = alreadySelected && selectedElementIds.size > 0 ? [...selectedElementIds] : [resolvedTargetId];
         const supportsDeferredTextDrag = snapshot.editHandles.some(
           (handle: EditHandle) =>

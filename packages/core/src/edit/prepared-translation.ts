@@ -29,14 +29,19 @@ export function prepareTranslation(source: string, handles: readonly EditHandle[
     }
   };
   visit(parsed.figure.body);
+  const selectedScopes = ids.flatMap((id) => {
+    const statement = statements.get(id);
+    return statement?.kind === "Scope" ? [statement] : [];
+  });
   const selected = [...new Set(ids)].filter((id) => {
     const child = statements.get(id); if (!child) return true;
-    return !ids.some((parentId) => { const parent = statements.get(parentId); return parentId !== id && parent?.kind === "Scope" && parent.span.from <= child.span.from && parent.span.to >= child.span.to; });
+    return !selectedScopes.some((parent) => parent.id !== id && parent.span.from <= child.span.from && parent.span.to >= child.span.to);
   });
   semantic ??= evaluateTikzFigure(parsed.figure, source);
   const movingSourceIds = new Set(selected);
+  const movingScopes = selectedScopes.filter((scope) => movingSourceIds.has(scope.id));
   for (const [id, statement] of statements) {
-    if (selected.some((parentId) => { const parent = statements.get(parentId); return parent?.kind === "Scope" && parent.span.from <= statement.span.from && parent.span.to >= statement.span.to; })) movingSourceIds.add(id);
+    if (movingScopes.some((parent) => parent.span.from <= statement.span.from && parent.span.to >= statement.span.to)) movingSourceIds.add(id);
     if (movingSourceIds.has(id) && statement.kind === "Path") for (const item of statement.items) if (item.kind === "Node") movingSourceIds.add(item.id);
   }
   for (const element of semantic.scene.elements) if (element.matrixCell && movingSourceIds.has(element.matrixCell.matrixSourceId)) movingSourceIds.add(element.matrixCell.cellSourceId);

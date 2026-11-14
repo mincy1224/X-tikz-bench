@@ -56,7 +56,9 @@ export function CanvasSVGLayer(params: {
         onFallback("replaceAll");
       }
       patcher.applyOperations(operations);
-      if (projectId && internalHostRef.current && operations.length) connectProjectPngImages(internalHostRef.current, projectId);
+      if (projectId && internalHostRef.current && operations.some((operation) => operation.kind !== "setViewBox")) {
+        connectProjectPngImages(internalHostRef.current, projectId);
+      }
       previousModelRef.current = model;
       recordProfilingSvgPatchTiming({
         durationMs: performance.now() - startedAt,

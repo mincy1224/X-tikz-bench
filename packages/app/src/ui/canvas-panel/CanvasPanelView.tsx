@@ -562,6 +562,8 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
                 onPointerLeave={onInteractionPointerLeave}
                 onContextMenu={onCanvasContextMenu}
               >
+                <polygon data-resize-preview="" fill="none" stroke="var(--accent)" strokeWidth="1.5"
+                  strokeDasharray="5 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
                 {gridLines && (
                   <g className={css.gridOverlay}>
                     {gridLines.verticalMinor.map((x: number) => (
