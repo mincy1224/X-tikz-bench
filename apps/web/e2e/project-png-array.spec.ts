@@ -248,7 +248,7 @@ test("the canvas defaults to Times New Roman with native italic and bold italic"
   await expect(question.locator("tspan").last()).toHaveAttribute("dy", "1.65em");
 });
 
-test("oversized canvases pan with both scrollbars", async ({ page }) => {
+test("canvas panning stops at the page edges and keeps fitted drawings nearby", async ({ page }) => {
   await gotoApp(page);
   await setSource(page, String.raw`\draw (0,0) rectangle (80,80);`);
   await page.getByTestId("canvas-viewport").hover();
@@ -260,14 +260,32 @@ test("oversized canvases pan with both scrollbars", async ({ page }) => {
   const stage = page.getByTestId("canvas-world-stage");
   await expect(horizontal).toBeVisible();
   await expect(vertical).toBeVisible();
+  const maxX = Number(await horizontal.getAttribute("max"));
+  const maxY = Number(await vertical.getAttribute("max"));
+  await page.mouse.wheel(100_000, 100_000);
+  await expect(stage).toHaveAttribute("data-canvas-translate-x", String(-maxX));
+  await expect(stage).toHaveAttribute("data-canvas-translate-y", String(-maxY));
+  await page.mouse.wheel(-100_000, -100_000);
+  await expect(stage).toHaveAttribute("data-canvas-translate-x", "0");
+  await expect(stage).toHaveAttribute("data-canvas-translate-y", "0");
   await horizontal.focus();
   await page.keyboard.press("End");
-  const maxX = Number(await horizontal.getAttribute("max"));
   await expect(stage).toHaveAttribute("data-canvas-translate-x", String(-maxX));
   await vertical.focus();
   await page.keyboard.press("End");
-  const maxY = Number(await vertical.getAttribute("max"));
   await expect(stage).toHaveAttribute("data-canvas-translate-y", String(-maxY));
+
+  await page.getByRole("button", { name: "Fit to content" }).click();
+  await expect(horizontal).toHaveCount(0);
+  const fittedX = Number(await stage.getAttribute("data-canvas-translate-x"));
+  const fittedY = Number(await stage.getAttribute("data-canvas-translate-y"));
+  await page.getByTestId("canvas-viewport").hover();
+  await page.mouse.wheel(100_000, -100_000);
+  await expect.poll(async () => {
+    const x = Number(await stage.getAttribute("data-canvas-translate-x"));
+    const y = Number(await stage.getAttribute("data-canvas-translate-y"));
+    return Math.max(Math.abs(x - fittedX), Math.abs(y - fittedY));
+  }).toBeLessThanOrEqual(49);
 });
 
 test("the dashboard searches projects and restores them from trash", async ({ page, request }) => {

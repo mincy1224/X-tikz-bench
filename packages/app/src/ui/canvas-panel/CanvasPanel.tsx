@@ -74,6 +74,7 @@ generateFreehandToolSource
 } from "./freehand-tool";
 import {
 clamp,
+canvasPanRange,
 clientToSvgPoint,
 viewportToSvgPoint,
 viewportToWorldPoint,
@@ -1141,17 +1142,32 @@ export const CanvasPanel = memo(function CanvasPanel({
   });
 
   const dispatchCanvasTransform = useCallback(
-    (transform: CanvasTransform) => {
+    (requested: CanvasTransform) => {
+      let transform = requested;
+      if (projectId !== null && baseSvgResult && svgResult && viewportSize.width > 0 && viewportSize.height > 0) {
+        const page = baseSvgResult.viewBox;
+        const view = svgResult.viewBox;
+        const x = canvasPanRange(viewportSize.width, page.width * requested.scale);
+        const y = canvasPanRange(viewportSize.height, page.height * requested.scale);
+        const offsetX = (page.x - view.x) * requested.scale;
+        const offsetY = (page.y - view.y) * requested.scale;
+        transform = {
+          ...requested,
+          translateX: clamp(requested.translateX + offsetX, x.min, x.max) - offsetX,
+          translateY: clamp(requested.translateY + offsetY, y.min, y.max) - offsetY
+        };
+      }
+      const current = useEditorStore.getState().canvasTransform;
       if (
-        Math.abs(transform.translateX - canvasTransform.translateX) < 1e-9 &&
-        Math.abs(transform.translateY - canvasTransform.translateY) < 1e-9 &&
-        Math.abs(transform.scale - canvasTransform.scale) < 1e-9
+        Math.abs(transform.translateX - current.translateX) < 1e-9 &&
+        Math.abs(transform.translateY - current.translateY) < 1e-9 &&
+        Math.abs(transform.scale - current.scale) < 1e-9
       ) {
         return;
       }
       dispatch({ type: "SET_CANVAS_TRANSFORM", transform });
     },
-    [canvasTransform.scale, canvasTransform.translateX, canvasTransform.translateY, dispatch]
+    [baseSvgResult, svgResult, viewportSize, projectId, dispatch]
   );
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -1903,6 +1919,10 @@ export const CanvasPanel = memo(function CanvasPanel({
     MIN_SCALE,
     MAX_SCALE
   });
+
+  useLayoutEffect(() => {
+    if (projectId !== null) dispatchCanvasTransform(useEditorStore.getState().canvasTransform);
+  }, [dispatchCanvasTransform, projectId, canvasTransform]);
 
   const copyWarningToClipboard = useCallback(() => {
     if (!warning) {

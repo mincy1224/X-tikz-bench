@@ -48,7 +48,7 @@ import type {
   TextSelectionOverlayBox
 } from "./types";
 import type { SvgBounds, WorldPoint } from "../coords/types";
-import { fmt, worldToSvgY, type RulerTick, type VisibleRanges } from "./geometry";
+import { canvasPanRange, fmt, worldToSvgY, type RulerTick, type VisibleRanges } from "./geometry";
 import { CanvasContextMenu } from "../CanvasContextMenu";
 import { RenderedTooltip } from "../RenderedTooltip";
 import type { CommandBindings, CommandOrigin } from "../editor-command-runtime";
@@ -391,7 +391,7 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
     const extent = (horizontal ? svgResult.viewBox.width : svgResult.viewBox.height) * canvasTransform.scale;
     if (visible <= 0 || extent <= visible + 1) return null;
     const key = horizontal ? "translateX" : "translateY";
-    const maximum = Math.ceil(extent - visible);
+    const maximum = -canvasPanRange(visible, extent).min;
     return <input key={axis} type="range" className={horizontal ? css.canvasScrollX : css.canvasScrollY}
       aria-label={horizontal ? "水平滚动画布" : "垂直滚动画布"}
       style={{ "--canvas-scroll-thumb": `${Math.max(24, (visible - 22) * visible / extent)}px` } as CSSProperties}

@@ -20,6 +20,15 @@ export type RulerTick = {
   label?: string;
 };
 
+/** Keep the page within a small margin at fit, or between its edges when zoomed in. */
+export function canvasPanRange(viewportSize: number, pageSize: number): { min: number; max: number } {
+  const spare = viewportSize - pageSize;
+  if (spare < 0) return { min: Math.floor(spare), max: 0 };
+  const center = spare / 2;
+  const margin = Math.min(center, 48);
+  return { min: center - margin, max: center + margin };
+}
+
 export type VisibleRanges = {
   worldMinX: number;
   worldMaxX: number;
