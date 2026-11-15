@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { loadConfig } from "./config.js";
-import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError } from "./latex/compiler.js";
+import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError, resolveBibliographyLabels } from "./latex/compiler.js";
 import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectBibliography, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, saveProjectBibliography, softDeleteProject, storeProjectPng, updateProject, type ProjectBibliography } from "./projects/store.js";
 import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
 import { PROJECT_PALETTE_BLOCK, splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
@@ -131,6 +131,22 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     }
     const projectMatch = /^\/api\/projects\/([0-9a-f-]+)$/iu.exec(url.pathname);
     const bibliographyMatch = /^\/api\/projects\/([0-9a-f-]+)\/bibliography$/iu.exec(url.pathname);
+    if (bibliographyMatch && request.method === "POST") {
+      const { keys } = JSON.parse(await body(request, 64 * 1024)) as { keys?: unknown };
+      if (!Array.isArray(keys) || keys.length > 1000 || !keys.every((key: unknown): key is string =>
+        typeof key === "string" && /^[^\s\\{}%,#\p{Cc}]{1,200}$/u.test(key))) {
+        json(response, 400, { error: "Invalid citation keys." });
+        return;
+      }
+      if (activeCompiles >= config.maxConcurrency) { json(response, 429, { error: "Too many compilations in progress." }); return; }
+      activeCompiles++;
+      try {
+        const bibliography = await getProjectBibliography(config, bibliographyMatch[1]);
+        const labels = bibliography ? await resolveBibliographyLabels(config, bibliography, keys) : {};
+        json(response, 200, { labels });
+      } finally { activeCompiles--; }
+      return;
+    }
     if (bibliographyMatch && (request.method === "PUT" || request.method === "DELETE")) {
       let bibliography: ProjectBibliography | null = null;
       if (request.method === "PUT") {

@@ -59,6 +59,7 @@ export type NodeTextRenderInfo =
     };
 
 export type NodeTextEngine = {
+  citationLabels?: Readonly<Record<string, string>>;
   preferNativeSerif?: boolean;
   validate(text: string): NodeTextValidationIssue | null;
   measure(request: NodeTextMeasureRequest): NodeTextMetrics | null;

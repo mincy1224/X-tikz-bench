@@ -10,6 +10,7 @@ import type { ResolvedStyle } from "../types.js";
 import type { NodeLayout, NodeShape } from "./types.js";
 import { normalizeOptionValue } from "./utils.js";
 import { readTexGroup } from "../../tex/environment.js";
+import { renderCitationLabels } from "../../tex/citations.js";
 
 const EXPLICIT_LINE_BREAK_PATTERN = /[ \t\r\n]*\\\\(?:\[[^\]]*\])?[ \t\r\n]*/g;
 const EXPLICIT_LINE_BREAK_CANONICAL_PATTERN = /[ \t\r\n]*(\\\\(?:\[[^\]]*\])?)[ \t\r\n]*/g;
@@ -141,7 +142,8 @@ export function resolveNodeLayout(
 
   const noWidthHalignEnabled = (explicitAlign != null && explicitAlign !== "none") || hasNoWidthHalignHeader;
   const explicitLineBreaksActive = textWidth != null || noWidthHalignEnabled;
-  let normalizedText = normalizeTextForLineBreakPolicy(text, explicitLineBreaksActive);
+  const displayText = textEngine?.citationLabels ? renderCitationLabels(text, textEngine.citationLabels) : text;
+  let normalizedText = normalizeTextForLineBreakPolicy(displayText, explicitLineBreaksActive);
   let plainStyle = style;
   let nativeSerif = false;
   let lineBreakExtraPt: number[] | undefined;

@@ -37,6 +37,7 @@ import { ProjectPalette } from "./ProjectPalette";
 import { ProjectBibliography, type ProjectBibliographyData } from "./ProjectBibliography";
 import { ProjectBrand } from "./ProjectBrand";
 import { projectPaletteColors } from "tikz-editor/tex/project-source";
+import { collectCitationKeys } from "tikz-editor/tex/citations";
 import { ProjectAssetPanel, PROJECT_ASSET_DRAG_TYPE, type ProjectAsset } from "./ProjectAssetPanel";
 import css from "./App.module.css";
 import "./variables.css";
@@ -248,6 +249,7 @@ export type AppProps = {
     palette: string;
     onPaletteChange: (palette: string) => Promise<void>;
     bibliography: ProjectBibliographyData | null;
+    resolveCitationLabels: (keys: string[], signal: AbortSignal) => Promise<Record<string, string>>;
     onBibliographyChange: (bibliography: ProjectBibliographyData | null) => Promise<void>;
     id: string;
     name: string;
@@ -374,6 +376,25 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
   const [pendingFileConflict, setPendingFileConflict] = useState<PendingFileConflict | null>(null);
   const [projectCopyStatus, setProjectCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const requestCloseIntentRef = useRef<(intent: CloseIntent) => void>(() => {});
+  const bibliography = project?.bibliography;
+  const resolveCitationLabels = project?.resolveCitationLabels;
+  const orderedCitationKeys = useMemo(() => preferNativeSerif ? JSON.stringify(collectCitationKeys(source)) : "[]", [preferNativeSerif, source]);
+  const [citationResult, setCitationResult] = useState<{ keys: string; bibliography: ProjectBibliographyData; labels: Record<string, string> } | null>(null);
+  const missingCitationLabels = useMemo(() => ({}), []);
+  const citationLabels = project
+    ? citationResult?.keys === orderedCitationKeys && citationResult.bibliography === bibliography ? citationResult.labels : missingCitationLabels
+    : undefined;
+  useEffect(() => {
+    if (!bibliography || !resolveCitationLabels || orderedCitationKeys === "[]") return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const keys = JSON.parse(orderedCitationKeys) as string[];
+      void resolveCitationLabels(keys, controller.signal).then((labels) => {
+        if (!controller.signal.aborted) setCitationResult({ keys: orderedCitationKeys, bibliography, labels });
+      }).catch(() => {});
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [bibliography, orderedCitationKeys, resolveCitationLabels]);
   const computeSchedulerRef = useRef<ReturnType<typeof createSingleFlightScheduler<ComputeRequest, ComputeResponse>> | null>(null);
   const dragRenderViewBoxRef = useRef<ComputeRequest["renderViewBox"]>(null);
   const updateCheckPromiseRef = useRef<Promise<UpdateInfo | null> | null>(null);
@@ -958,7 +979,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
 
   useEffect(() => {
     const scheduler = createSingleFlightScheduler<ComputeRequest, ComputeResponse>({
-      run: (request) => computeSnapshot({ ...request, preferNativeSerif, projectColors }),
+      run: (request) => computeSnapshot({ ...request, preferNativeSerif, projectColors, citationLabels }),
       onStart: (request) => {
         if ((request.kind ?? "render") === "prewarm") {
           return;
@@ -994,7 +1015,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       scheduler.dispose();
       computeSchedulerRef.current = null;
     };
-  }, [dispatch, preferNativeSerif, projectColors]);
+  }, [citationLabels, dispatch, preferNativeSerif, projectColors]);
 
   // ── Compute pipeline ─────────────────────────────────────────────────────────
   // Keep at most one in-flight compute; while in-flight, coalesce to the latest source.
@@ -1022,7 +1043,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
     ? (source.length > 80_000 ? 220 : 120)
     : null;
 
-  const lastRenderRequest = useRef<{ documentId: string; figureId: string | null; source: string; palette: string; font: typeof mathJaxFont; viewBox: typeof renderViewBox } | null>(null);
+  const lastRenderRequest = useRef<{ documentId: string; figureId: string | null; source: string; palette: string; citationLabels: typeof citationLabels; font: typeof mathJaxFont; viewBox: typeof renderViewBox } | null>(null);
   useEffect(() => {
     const retry = () => { retryTexTextRendering();
       const state = useEditorStore.getState();
@@ -1033,16 +1054,16 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
   }, []);
   const hasSameRenderInput = useCallback(() => {
     const last = lastRenderRequest.current;
-    return last?.documentId === activeDocumentId && last.figureId === activeFigureId && last.source === source && last.palette === palette && last.font === mathJaxFont && (last.viewBox === renderViewBox || isDragComputeTrigger && last.viewBox === null);
-  }, [activeDocumentId, activeFigureId, source, palette, mathJaxFont, renderViewBox, isDragComputeTrigger]);
+    return last?.documentId === activeDocumentId && last.figureId === activeFigureId && last.source === source && last.palette === palette && last.citationLabels === citationLabels && last.font === mathJaxFont && (last.viewBox === renderViewBox || isDragComputeTrigger && last.viewBox === null);
+  }, [activeDocumentId, activeFigureId, source, palette, citationLabels, mathJaxFont, renderViewBox, isDragComputeTrigger]);
   useEffect(() => {
     const scheduler = computeSchedulerRef.current;
     if (!scheduler || typingComputeDelay != null) {
       return;
     }
     if (hasSameRenderInput()) return;
-    const paletteChanged = lastRenderRequest.current?.palette !== palette;
-    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, palette, font: mathJaxFont, viewBox: renderViewBox };
+    const stylesChanged = lastRenderRequest.current?.palette !== palette || lastRenderRequest.current?.citationLabels !== citationLabels;
+    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, palette, citationLabels, font: mathJaxFont, viewBox: renderViewBox };
     setMathJaxFont(mathJaxFont);
     scheduler.schedule({
       id: crypto.randomUUID(),
@@ -1054,10 +1075,10 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       changedSourceIds,
       patches: lastEditPatches ? [...lastEditPatches] : null,
       patchBaseRevision: lastEditPatchBaseRevision,
-      trigger: paletteChanged ? "other" : trigger,
-      renderViewBox: paletteChanged ? null : renderViewBox
+      trigger: stylesChanged ? "other" : trigger,
+      renderViewBox: stylesChanged ? null : renderViewBox
     });
-  }, [activeDocumentId, activeFigureId, changedSourceIds, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, palette, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
+  }, [activeDocumentId, activeFigureId, changedSourceIds, citationLabels, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, palette, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
 
   useDebouncedEffect(() => {
     const scheduler = computeSchedulerRef.current;
@@ -1065,7 +1086,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       return;
     }
     if (hasSameRenderInput()) return;
-    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, palette, font: mathJaxFont, viewBox: renderViewBox };
+    lastRenderRequest.current = { documentId: activeDocumentId, figureId: activeFigureId, source, palette, citationLabels, font: mathJaxFont, viewBox: renderViewBox };
     setMathJaxFont(mathJaxFont);
     scheduler.schedule({
       id: crypto.randomUUID(),
@@ -1079,7 +1100,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       patchBaseRevision: lastEditPatchBaseRevision,
       trigger
     });
-  }, typingComputeDelay, [activeDocumentId, activeFigureId, changedSourceIds, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, palette, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
+  }, typingComputeDelay, [activeDocumentId, activeFigureId, changedSourceIds, citationLabels, dispatch, hasSameRenderInput, lastEditPatchBaseRevision, lastEditPatches, mathJaxFont, palette, renderViewBox, source, sourceRevision, trigger, typingComputeDelay]);
 
 
   useEffect(() => {

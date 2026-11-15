@@ -281,6 +281,13 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     void persist({ source: currentSource }).then(() => { navigate("/"); }).catch(() => { leavingRef.current = false; });
   }, [persist, project?.source, saveQueue]);
 
+  const resolveCitationLabels = useCallback(async (keys: string[], signal: AbortSignal) => {
+    const { labels } = await api<{ labels: Record<string, string> }>("/api/projects/" + id + "/bibliography", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ keys }), signal
+    });
+    return labels;
+  }, [id]);
+
   const projectProps = useMemo(() => project ? {
     id: project.id, name: project.name, source: project.source, saveStatus,
     onBack: leaveProject, onRename: rename, onSourceChange: setDraftSource,
@@ -288,6 +295,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     onShowTexProof: () => { setShowTexProof(true); }, compileSource, palette,
     onPaletteChange: async (next: string) => { await persist({ palette: next }); },
     bibliography: project.bibliography ?? null,
+    resolveCitationLabels,
     onBibliographyChange: async (next: { name: string; source: string; style: string } | null) => {
       const { bibliography } = await api<{ bibliography: Project["bibliography"] }>(`/api/projects/${id}/bibliography`, {
         method: next ? "PUT" : "DELETE", headers: { "content-type": "application/json" }, body: next ? JSON.stringify(next) : undefined
@@ -296,7 +304,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     },
     assets, onUploadAsset: uploadAsset,
     onDownloadTex: () => { void download("tex"); }
-  } : null, [assets, compileSource, download, id, leaveProject, onSaveShortcut, palette, persist, project, rename, saveStatus, uploadAsset]);
+  } : null, [assets, compileSource, download, id, leaveProject, onSaveShortcut, palette, persist, project, rename, resolveCitationLabels, saveStatus, uploadAsset]);
 
   async function switchCanvas(target: string) {
     if (switchingCanvas) return;

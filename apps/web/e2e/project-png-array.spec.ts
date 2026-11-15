@@ -98,6 +98,12 @@ test("a project ZIP merges legacy image placements into the editable TikZ body",
 test("a project bibliography is managed outside canvas code and survives ZIP import", async ({ page, request }) => {
   await gotoApp(page);
   const projectId = new URL(page.url()).pathname.split("/").at(-1)!;
+  await page.route("**/api/projects/" + projectId + "/bibliography", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    expect(route.request().postDataJSON()).toEqual({ keys: ["knuth1984"] });
+    const project = (await (await request.get("/api/projects/" + projectId)).json()).project;
+    await route.fulfill({ json: { labels: { knuth1984: project.bibliography.style === "alpha" ? "Knu84" : "1" } } });
+  });
   await setSource(page, String.raw`\node at (0,0) {See \cite{knuth1984}};`);
   await page.getByRole("button", { name: "Cite", exact: true }).click();
   await page.getByLabel("选择 BibTeX 文件").setInputFiles({
@@ -107,6 +113,7 @@ test("a project bibliography is managed outside canvas code and survives ZIP imp
   await page.getByLabel("BibTeX 引用样式").selectOption("alpha");
   await page.getByRole("button", { name: "保存更改" }).click();
   await expect.poll(async () => (await (await request.get(`/api/projects/${projectId}`)).json()).project.bibliography.style).toBe("alpha");
+  await expect(page.getByTestId("canvas-svg-layer")).toContainText("See [Knu84]");
   expect(await readSource(page)).not.toContain("bibliographystyle");
   const archive = unzipSync(await (await request.post(`/api/projects/${projectId}/export/tex`, { data: { source: await readSource(page) } })).body());
   expect(strFromU8(archive["main.tex"])).toContain("\\bibliographystyle{alpha}");

@@ -152,7 +152,35 @@ async function stagePngs(directory: string, pngs?: ReadonlyMap<string, Buffer>):
   }
 }
 
-async function runLatexPasses(directory: string, config: ServerConfig, profile: "latex" | "xelatex", deadline: number, fontConfig: string | undefined, bibliography?: ProjectBibliography): Promise<{ log: string; diagnostics: LatexDiagnostic[] }> {
+async function runBibtex(config: ServerConfig, directory: string, deadline: number): Promise<string> {
+  const result = await run(config.bibtexBin ?? "bibtex", ["input"], directory, Math.max(1, deadline - Date.now()), true);
+  if (result.code !== 0) throw new LatexCompileError(result.output.trim() || "BibTeX failed.", result.output.slice(-MAX_LOG_BYTES), []);
+  return result.output;
+}
+
+export async function resolveBibliographyLabels(config: ServerConfig, bibliography: ProjectBibliography, keys: string[]): Promise<Record<string, string>> {
+  if (!keys.length) return {};
+  const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-cite-"));
+  try {
+    await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
+    await writeFile(path.join(directory, "input.aux"), [
+      ...keys.map((key) => "\\citation{" + key + "}"),
+      "\\bibstyle{" + bibliography.style + "}",
+      "\\bibdata{references}",
+      ""
+    ].join("\n"));
+    await runBibtex(config, directory, Date.now() + config.timeoutMs);
+    const output = await readFile(path.join(directory, "input.bbl"), "utf8");
+    const items = [...output.matchAll(/^\\bibitem\s*(?:\[([^\]]+)\]\s*)?\{([^{}]+)\}/gmu)];
+    return Object.fromEntries(items.map(([, label, key], index) => [
+      key, label?.replace(/(?:\\protect\s*)?\\etalchar\{([^{}]+)\}/gu, "$1") ?? String(index + 1)
+    ]));
+  } finally {
+    await rm(directory, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function runLatexPasses(directory: string, config: ServerConfig, profile: "latex" | "xelatex", deadline: number, fontConfig: string | undefined, bibliography?: ProjectBibliography, checkCitations = false): Promise<{ log: string; diagnostics: LatexDiagnostic[] }> {
   const command = profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin;
   const execute = async () => {
     const result = await run(command, engineArgs(profile), directory, Math.max(1, deadline - Date.now()), true, fontConfig);
@@ -163,12 +191,19 @@ async function runLatexPasses(directory: string, config: ServerConfig, profile: 
     return { log, diagnostics };
   };
   let output = await execute();
-  if (bibliography && /\\citation\{/u.test(await readFile(path.join(directory, "input.aux"), "utf8"))) {
-    const bibtex = await run(config.bibtexBin ?? "bibtex", ["input"], directory, Math.max(1, deadline - Date.now()), true, fontConfig);
-    if (bibtex.code !== 0 || /I didn't find a database entry for/u.test(bibtex.output)) {
-      throw new LatexCompileError(bibtex.output.trim() || "BibTeX failed.", bibtex.output.slice(-MAX_LOG_BYTES), []);
-    }
+  if (bibliography && /\\citation\s*\{/u.test(await readFile(path.join(directory, "input.aux"), "utf8").catch(() => ""))) {
+    await runBibtex(config, directory, deadline);
+    // The first pass after BibTeX writes \bibcite. The next pass reads it.
+    await execute();
     output = await execute();
+  }
+  if (checkCitations) {
+    const unresolved = [...new Set([...output.log.matchAll(/\bCitation\s+[\x60']([^'\r\n]+)'\s+on page\s+\S+\s+undefined/giu)].map((match) => match[1]))];
+    if (unresolved.length || /There were undefined citations/u.test(output.log)) {
+      const keys = unresolved.length ? " " + unresolved.join(", ") : "";
+      const hint = bibliography ? "请检查 Cite 中的文献键与 \\cite 一致。" : "请先在项目的 Cite 面板导入 .bib。";
+      throw new LatexCompileError("未解析的引用" + keys + "。" + hint, output.log, []);
+    }
   }
   return output;
 }
@@ -182,7 +217,7 @@ export async function compileLatex(source: string, config: ServerConfig, request
     if (bibliography) await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
     await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography), "utf8");
-    const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined);
+    const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined, projectDefaults);
     const input = profile === "xelatex" ? "input.xdv" : "input.dvi";
     const dviPath = path.join(directory, input);
     await stat(dviPath);
@@ -255,7 +290,7 @@ export async function compileLatexPdf(source: string, config: ServerConfig, requ
     if (bibliography) await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
     await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography), "utf8");
-    const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined);
+    const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined, projectDefaults);
     const pdf = await run(config.dvipdfmxBin, ["-q", "-o", "output.pdf", profile === "xelatex" ? "input.xdv" : "input.dvi"], directory, Math.max(1, deadline - Date.now()), true, fontConfig);
     if (pdf.code !== 0) throw new LatexCompileError(pdf.output || "dvipdfmx conversion failed.", log, diagnostics);
     const output = await readFile(path.join(directory, "output.pdf"));
