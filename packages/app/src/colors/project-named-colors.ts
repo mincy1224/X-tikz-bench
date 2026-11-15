@@ -1,5 +1,5 @@
 import type { Tree } from "@lezer/common";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useEffect, useMemo, useState } from "react";
 import { BASIC_PICKER_COLOR_SET } from "./color-palette";
 import { resolveDeclaredColorAnalysis } from "./source-color-detection";
 import { useEditorStore } from "../store/store";
@@ -8,6 +8,8 @@ export type NamedColorSwatch = {
   token: string;
   cssColor: string;
 };
+
+export const ProjectPaletteColorsContext = createContext<Readonly<Record<string, string>> | null>(null);
 
 let lastDeclaredColorSignature = "__project-named-colors:uninitialized__";
 let lastSwatches: NamedColorSwatch[] = [];

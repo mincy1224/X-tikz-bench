@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import type { ProjectBibliography } from "../projects/store.js";
+import { citationLinkPreamble } from "./citation-links.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
 import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
 import { DEFAULT_PROJECT_FONT, PROJECT_PALETTE_BLOCK, withoutProjectFontBlock, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
@@ -216,7 +217,8 @@ export async function compileLatex(source: string, config: ServerConfig, request
     await stagePngs(directory, pngs);
     if (bibliography) await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
-    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography), "utf8");
+    const svgBibliography = bibliography?.links?.enabled ? { ...bibliography, links: undefined } : bibliography;
+    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, svgBibliography), "utf8");
     const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined, projectDefaults);
     const input = profile === "xelatex" ? "input.xdv" : "input.dvi";
     const dviPath = path.join(directory, input);
@@ -239,12 +241,14 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
   if (bibliography) {
     const document = createStandaloneDocument(source, requestedProfile, projectDefaults);
     const preambleEnd = document.indexOf("\\begin{document}");
-    const setup = `\\usepackage{cite}\n% x-tikz-bench: bibliography start\n\\bibliographystyle{${bibliography.style}}\n% x-tikz-bench: bibliography end\n`;
     const preamble = preambleEnd >= 0 ? document.slice(0, preambleEnd) : "";
+    const packages = new Set(extractTexEnvironment(preamble).packages.map(({ name }) => name));
+    const citePackage = ["cite", "natbib", "biblatex"].some((name) => packages.has(name)) ? "" : "\\usepackage{cite}\n";
+    const linkSettings = bibliography.links ? "% x-tikz-bench: citation-links " + JSON.stringify(bibliography.links) + "\n" : "";
+    const linkSetup = bibliography.links?.enabled ? citationLinkPreamble(bibliography.source, bibliography.links, !packages.has("hyperref")) + "\n" : "";
+    const setup = `% x-tikz-bench: bibliography start\n${citePackage}\\bibliographystyle{${bibliography.style}}\n${linkSettings}${linkSetup}% x-tikz-bench: bibliography end\n`;
     const suffix = "\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup\n";
-    const withSetup = preambleEnd >= 0 && !/\\usepackage(?:\[[^\]]*\])?\{(?:cite|natbib|biblatex)\}/u.test(preamble)
-      ? document.slice(0, preambleEnd) + setup + document.slice(preambleEnd)
-      : document.slice(0, preambleEnd) + setup.replace("\\usepackage{cite}\n", "") + document.slice(preambleEnd);
+    const withSetup = document.slice(0, preambleEnd) + setup + document.slice(preambleEnd);
     return withSetup.replace(/\\end\{document\}\s*$/u, `${suffix}\\end{document}\n`);
   }
   const palette = projectDefaults ? PROJECT_PALETTE_BLOCK.exec(source)?.[0] : undefined;

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { rgbToXcolorExpression, type RgbColor, type RgbToXcolorMode } from "xcolor-rgb-convert";
 import { normalizeColor } from "tikz-editor/semantic/style/colors";
 import { BASIC_PICKER_COLORS, BASIC_PICKER_COLOR_SET } from "../colors/color-palette";
-import type { NamedColorSwatch } from "../colors/project-named-colors";
+import { ProjectPaletteColorsContext, type NamedColorSwatch } from "../colors/project-named-colors";
 import { useSettingsStore } from "../settings/useSettingsStore";
 import type { ColorPickerAccuracy } from "../settings/types";
 import { expandGrayAliasToBlackMix, serializeBlackMixToGrayAlias } from "./color-picker-grayscale";
@@ -67,9 +67,10 @@ export function ColorPickerField({
   const [popoverMaxHeight, setPopoverMaxHeight] = useState<number>(POPOVER_MAX_HEIGHT_PX);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const paletteColors = useContext(ProjectPaletteColorsContext);
   const normalizedNamedColorSwatches = useMemo(
-    () => normalizeNamedColorSwatches(namedColorSwatches),
-    [namedColorSwatches]
+    () => normalizeNamedColorSwatches([...Object.entries(paletteColors ?? {}).map(([token, cssColor]) => ({ token, cssColor })), ...namedColorSwatches]),
+    [namedColorSwatches, paletteColors]
   );
   const namedColorLookup = useMemo(
     () => buildNamedColorLookup(normalizedNamedColorSwatches),
@@ -245,19 +246,22 @@ export function ColorPicker({
   onChange, onPreview, onCommit, onCancel
 }: ColorPickerProps) {
   const gestureActive = useRef(false);
+  const paletteColors = useContext(ProjectPaletteColorsContext);
+  const compact = paletteColors !== null;
   const finishGesture = (cancelled: boolean) => {
     gestureActive.current = false;
     if (cancelled) onCancel?.(); else onCommit?.();
   };
-  const colorPickerAccuracy = useSettingsStore((s) => s.settings.colorPicker.accuracy);
+  const configuredAccuracy = useSettingsStore((s) => s.settings.colorPicker.accuracy);
+  const colorPickerAccuracy = compact ? "exact" : configuredAccuracy;
   const normalizedSyntaxValue = normalizeColorToken(syntaxValue);
   const normalizedValue = normalizeColorToken(value);
   const driverValue = normalizedSyntaxValue ?? normalizedValue;
   const grayscaleDriverValue = expandGrayAliasToBlackMix(driverValue);
   const builtInColors = useMemo(() => buildBuiltInColorList(options), [options]);
   const normalizedNamedColorSwatches = useMemo(
-    () => normalizeNamedColorSwatches(namedColorSwatches),
-    [namedColorSwatches]
+    () => normalizeNamedColorSwatches([...Object.entries(paletteColors ?? {}).map(([token, cssColor]) => ({ token, cssColor })), ...namedColorSwatches]),
+    [namedColorSwatches, paletteColors]
   );
   const namedColorLookup = useMemo(
     () => buildNamedColorLookup(normalizedNamedColorSwatches),
@@ -283,10 +287,10 @@ export function ColorPicker({
   }, [builtInColors, namedColorTokenSet]);
   const initialTab = useMemo<ColorPickerTabId>(
     () =>
-      isStandardTabColorSupported(grayscaleDriverValue, namedColorTokenSet, toneSelectableTokens, mixed)
+      !compact && isStandardTabColorSupported(grayscaleDriverValue, namedColorTokenSet, toneSelectableTokens, mixed)
         ? "standard"
         : "custom",
-    [grayscaleDriverValue, mixed, namedColorTokenSet, toneSelectableTokens]
+    [compact, grayscaleDriverValue, mixed, namedColorTokenSet, toneSelectableTokens]
   );
   const [tab, setTab] = useState<ColorPickerTabId>(() => initialTab);
   const previousTabRef = useRef<ColorPickerTabId>(initialTab);
@@ -676,6 +680,13 @@ export function ColorPicker({
   }
 
   function commitCustomTextInput(): void {
+    const alias = customInputValue.trim().toLowerCase();
+    if (namedColorLookup.has(alias)) {
+      setCustomRgb(resolveCustomRgbFromDriver(alias, namedColorLookup));
+      setCustomInputError(null);
+      applyColor(alias);
+      return;
+    }
     const parsed = parseCustomColorInput(customInputValue);
     if (!parsed) {
       setCustomInputError(CUSTOM_PARSE_ERROR_MESSAGE);
@@ -700,7 +711,7 @@ export function ColorPicker({
 
   return (
     <div className={[css.root, disabled ? css.rootDisabled : ""].filter(Boolean).join(" ")}>
-      <div className={css.tabRow} role="tablist" aria-label={`${ariaLabel} picker tabs`}>
+      {!compact && <div className={css.tabRow} role="tablist" aria-label={`${ariaLabel} picker tabs`}>
         <button
           type="button"
           role="tab"
@@ -721,7 +732,7 @@ export function ColorPicker({
         >
           Custom
         </button>
-      </div>
+      </div>}
 
       {tab === "standard" ? (
         <div className={css.standardTabPanel} role="tabpanel">
@@ -819,7 +830,22 @@ export function ColorPicker({
           ) : null}
         </div>
       ) : (
-        <div className={css.customTabPanel} role="tabpanel">
+        <div className={css.customTabPanel} role={compact ? undefined : "tabpanel"}>
+          {compact && <div className={css.customField}>
+            <label className={css.customLabel}>项目颜色
+              <select className={css.customResultInput} value={driverValue && (driverValue === "none" || namedColorTokenSet.has(driverValue)) ? driverValue : ""}
+                disabled={disabled} onChange={(event) => {
+                  const token = event.currentTarget.value;
+                  setCustomInputValue(token === "none" ? rgbToHex(customRgb) : token);
+                  setCustomRgb(resolveCustomRgbFromDriver(token, namedColorLookup));
+                  applyColor(token);
+                }}>
+                <option value="" disabled>选择颜色名</option>
+                {options.includes("none") && <option value="none">无颜色</option>}
+                {normalizedNamedColorSwatches.map(({ token }) => <option key={token} value={token}>{token}</option>)}
+              </select>
+            </label>
+          </div>}
           <div className={css.customShadePickerStack}>
             <div
               ref={customHueTrackRef}
@@ -906,7 +932,7 @@ export function ColorPicker({
                   className={[css.customTextInput, customInputError ? css.customTextInputError : ""].filter(Boolean).join(" ")}
                   type="text"
                   value={customInputValue}
-                  placeholder="#00ff00, rgb(...), hsl(...), hsb(...)"
+                  placeholder={compact ? "#00ff00, rgb(...) 或颜色名" : "#00ff00, rgb(...), hsl(...), hsb(...)"}
                   spellCheck={false}
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -932,7 +958,7 @@ export function ColorPicker({
             {customInputError && <small id={`${customIdPrefix}-custom-error`} role="alert">{customInputError}</small>}
           </div>
 
-          <div className={css.customField}>
+          {!compact && <div className={css.customField}>
             <label className={css.customLabel} htmlFor={`${customIdPrefix}-custom-expression`}>
               xcolor
             </label>
@@ -952,7 +978,7 @@ export function ColorPicker({
                 commitCustomExpression();
               }}
             />
-          </div>
+          </div>}
 
           {customInputWarning ? (
             <div className={css.customMessageWarning} role="status">

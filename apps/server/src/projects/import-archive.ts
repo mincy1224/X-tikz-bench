@@ -6,6 +6,7 @@ import { splitProjectSource } from "../../../../packages/core/src/tex/project-so
 import { projectPngText } from "../../../../packages/core/src/edit/project-png.js";
 import { parseLength } from "../../../../packages/core/src/semantic/coords/parse-length.js";
 import type { ProjectBibliography } from "./store.js";
+import { isCitationLinks } from "../../../../packages/core/src/tex/citation-links.js";
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 
@@ -33,7 +34,13 @@ export async function importProjectArchive(bytes: Buffer, maxSourceBytes: number
   if (bibData && bibData.length > maxSourceBytes) throw new Error(".bib 文件过大。");
   const mainText = utf8.decode(entries.get(main));
   const bibStyle = /\\bibliographystyle\{(plain|unsrt|alpha|abbrv)\}/u.exec(mainText)?.[1] ?? "plain";
-  const bibliography = bibData ? { name: basename(bibName!), source: utf8.decode(bibData), style: bibStyle } : null;
+  const settings = /^% x-tikz-bench: citation-links (.+)$/mu.exec(mainText)?.[1];
+  let links: unknown;
+  if (settings) {
+    try { links = JSON.parse(settings); } catch { /* Ignore invalid optional metadata. */ }
+  }
+  const bibliography = bibData ? { name: basename(bibName!), source: utf8.decode(bibData), style: bibStyle,
+    ...(isCitationLinks(links) ? { links } : {}) } : null;
   const active = new Set<string>();
   let expandedBytes = 0;
   const expand = (file: string): string => {

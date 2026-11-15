@@ -1,15 +1,18 @@
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { tikzColor } from "tikz-editor/edit/editable-objects";
 import { parseLength } from "tikz-editor/semantic/coords/parse-length";
 import { usePropertyEditSession } from "./usePropertyEditSession";
 import { ColorPickerField } from "../ColorPicker";
+import { ProjectPaletteColorsContext } from "../../colors/project-named-colors";
 import css from "../format-panel.module.css";
 
-export function ColorField({ label, value, write }: { label: string; value: string | null; write: (source: string, value: string) => string }) {
+export function ColorField({ label, value, syntaxValue = value, write }: { label: string; value: string | null; syntaxValue?: string | null; write: (source: string, value: string) => string }) {
+  const palette = useContext(ProjectPaletteColorsContext);
+  const displaySyntax = palette && syntaxValue && Object.hasOwn(palette, syntaxValue) ? syntaxValue : value;
   const { update, commitPreview, cancel, error } = usePropertyEditSession(label);
   const preview = (color: string) => { update((base) => write(base, tikzColor(color)), true); };
   const finish = (shouldCancel: boolean) => { if (shouldCancel) cancel(); else commitPreview(); };
-  return <div className={css.field}><span>{label}</span><ColorPickerField ariaLabel={label} options={["none", "black", "white", "red", "orange", "yellow", "green", "blue", "violet", "gray"]} value={value} syntaxValue={value} mixed={value === null}
+  return <div className={css.field}><span>{label}</span><ColorPickerField ariaLabel={label} options={["none", "black", "white", "red", "orange", "yellow", "green", "blue", "violet", "gray"]} value={value} syntaxValue={displaySyntax} mixed={value === null}
     onPreview={preview} onChange={(color) => { preview(color); finish(false); }} onCommit={() => { finish(false); }} onCancel={() => { finish(true); }} />{error ? <small role="alert">{error}</small> : null}</div>;
 }
 

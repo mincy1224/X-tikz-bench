@@ -111,6 +111,9 @@ test("a project bibliography is managed outside canvas code and survives ZIP imp
   });
   await expect(page.getByRole("button", { name: "knuth1984" })).toBeVisible();
   await page.getByLabel("BibTeX 引用样式").selectOption("alpha");
+  await page.getByRole("checkbox", { name: "启用 PDF 引用链接" }).check();
+  await page.getByLabel("链接格式").selectOption("underline");
+  await page.getByLabel("链接颜色").fill("#a12468");
   await page.getByRole("button", { name: "保存更改" }).click();
   await expect.poll(async () => (await (await request.get(`/api/projects/${projectId}`)).json()).project.bibliography.style).toBe("alpha");
   await expect(page.getByTestId("canvas-svg-layer")).toContainText("See [Knu84]");
@@ -118,13 +121,16 @@ test("a project bibliography is managed outside canvas code and survives ZIP imp
   const archive = unzipSync(await (await request.post(`/api/projects/${projectId}/export/tex`, { data: { source: await readSource(page) } })).body());
   expect(strFromU8(archive["main.tex"])).toContain("\\bibliographystyle{alpha}");
   expect(strFromU8(archive["main.tex"])).toContain("\\bibliography{references}");
+  expect(strFromU8(archive["main.tex"])).toContain("\\definecolor{xtbcitelink}{HTML}{a12468}");
   expect(strFromU8(archive["references.bib"])).toContain("knuth1984");
   expect(strFromU8(archive["figure.tikz"])).toContain("\\cite{knuth1984}");
   const imported = await request.post(`/api/projects/import?name=Bibliography%20roundtrip%20${Date.now()}`, {
     headers: { "content-type": "application/zip" }, data: Buffer.from(zipSync(archive))
   });
   expect(imported.status()).toBe(201);
-  expect((await imported.json()).project.bibliography).toMatchObject({ name: "references.bib", style: "alpha" });
+  expect((await imported.json()).project.bibliography).toMatchObject({
+    name: "references.bib", style: "alpha", links: { enabled: true, format: "underline", color: "#a12468" }
+  });
 });
 
 test("copy, cut and paste work from the canvas with keyboard shortcuts", async ({ page }) => {
@@ -447,12 +453,19 @@ test("the dashboard searches projects and restores them from trash", async ({ pa
 
 test("typing a full hex color keeps keyboard focus and commits only on Enter", async ({ page }) => {
   await gotoApp(page);
+  await page.getByRole("button", { name: "配色盘" }).click();
+  await page.getByLabel("组名").fill("main");
+  await page.getByLabel("颜色名").fill("xyb");
+  await page.getByRole("button", { name: "添加颜色" }).click();
+  await expect(page.getByRole("button", { name: "复制 main-xyb" })).toBeVisible();
+  await page.getByRole("button", { name: "配色盘" }).click();
   const source = String.raw`\fill[blue] (0,0) rectangle (2,2);`;
   await setSource(page, source);
   await waitForHitRegions(page);
   await selectFirstCanvasElement(page);
   await page.getByRole("button", { name: "填充颜色", exact: true }).click();
-  await page.getByRole("tab", { name: "Custom", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Custom", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("xcolor", { exact: true })).toHaveCount(0);
   const input = page.getByLabel("Color Input", { exact: true });
   await input.fill("");
   for (const digit of "#123456") {
@@ -463,6 +476,11 @@ test("typing a full hex color keeps keyboard focus and commits only on Enter", a
   expect(await readSource(page)).toBe(source);
   await input.press("Enter");
   await expect.poll(() => readSource(page)).not.toBe(source);
+  await expect(page.getByTestId("canvas-svg-layer").locator('[fill="#123456" i]')).toBeVisible();
+  await input.fill("main-xyb");
+  await input.press("Enter");
+  await expect.poll(() => readSource(page)).toContain("main-xyb");
+  await expect(page.getByTestId("canvas-svg-layer").locator('[fill="#4656b8" i]')).toBeVisible();
 });
 
 test("simple rectangle keeps style and size when adding a centered label", async ({ page }) => {

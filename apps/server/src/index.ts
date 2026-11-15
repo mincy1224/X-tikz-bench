@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError, resolveBibliographyLabels } from "./latex/compiler.js";
+import { isCitationLinks } from "../../../packages/core/src/tex/citation-links.js";
 import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectBibliography, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, saveProjectBibliography, softDeleteProject, storeProjectPng, updateProject, type ProjectBibliography } from "./projects/store.js";
 import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
 import { PROJECT_PALETTE_BLOCK, splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
@@ -153,10 +154,11 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
         const payload = JSON.parse(await body(request, config.maxSourceBytes + 4096)) as Partial<ProjectBibliography>;
         if (typeof payload.name !== "string" || !/^[^\\/\r\n]{1,120}\.bib$/iu.test(payload.name) ||
           typeof payload.source !== "string" || Buffer.byteLength(payload.source, "utf8") > config.maxSourceBytes ||
-          !["plain", "unsrt", "alpha", "abbrv"].includes(payload.style ?? "")) {
+          !["plain", "unsrt", "alpha", "abbrv"].includes(payload.style ?? "") ||
+          (payload.links !== undefined && !isCitationLinks(payload.links))) {
           json(response, 400, { error: "请选择有效的 .bib 文件和参考文献样式。" }); return;
         }
-        bibliography = { name: payload.name, source: payload.source, style: payload.style! };
+        bibliography = { name: payload.name, source: payload.source, style: payload.style!, links: payload.links };
       }
       const saved = await saveProjectBibliography(config, bibliographyMatch[1], bibliography);
       json(response, saved === undefined ? 404 : 200, saved === undefined ? { error: "Project not found." } : { bibliography: saved });

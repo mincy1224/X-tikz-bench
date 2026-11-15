@@ -37,6 +37,7 @@ import { ProjectPalette } from "./ProjectPalette";
 import { ProjectBibliography, type ProjectBibliographyData } from "./ProjectBibliography";
 import { ProjectBrand } from "./ProjectBrand";
 import { projectPaletteColors } from "tikz-editor/tex/project-source";
+import { ProjectPaletteColorsContext } from "../colors/project-named-colors";
 import { collectCitationKeys } from "tikz-editor/tex/citations";
 import { ProjectAssetPanel, PROJECT_ASSET_DRAG_TYPE, type ProjectAsset } from "./ProjectAssetPanel";
 import css from "./App.module.css";
@@ -2121,7 +2122,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
   }
 
   return (
-    <ProjectIdContext.Provider value={project?.id ?? null}><ProjectCompilationContext.Provider value={project?.compileSource ?? identitySource}><div
+    <ProjectPaletteColorsContext.Provider value={project ? projectColors : null}><ProjectIdContext.Provider value={project?.id ?? null}><ProjectCompilationContext.Provider value={project?.compileSource ?? identitySource}><div
       className={css.app}
       style={appStyle}
       onDragOver={onAppDragOver}
@@ -2412,7 +2413,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       {isDragOver ? (
         <div className={css.dropOverlay}>Drop to open</div>
       ) : null}
-    </div></ProjectCompilationContext.Provider></ProjectIdContext.Provider>
+    </div></ProjectCompilationContext.Provider></ProjectIdContext.Provider></ProjectPaletteColorsContext.Provider>
   );
 }
 

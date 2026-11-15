@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
+import type { CitationLinks } from "../../../../packages/core/src/tex/citation-links.js";
 import { ASSET_KEY, MAX_PROJECT_PNG_BYTES, referencedPngKeys, type ProjectAsset } from "./png.js";
 import { prepareAsset, type PreparedAsset } from "./prepare-asset.js";
 import { PROJECT_PALETTE_BLOCK, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
@@ -122,7 +123,8 @@ CREATE TABLE IF NOT EXISTS project_bibliography (
   project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   source TEXT NOT NULL,
-  style TEXT NOT NULL
+  style TEXT NOT NULL,
+  links TEXT
 );
 CREATE TABLE IF NOT EXISTS project_main_canvas_names (
   project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
@@ -148,6 +150,10 @@ CREATE INDEX IF NOT EXISTS idx_projects_updated ON projects(updated_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_active_name ON projects(name) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_revisions_project ON project_revisions(project_id, revision DESC);
 `);
+  const columns = JSON.parse(await runSql(config, "PRAGMA table_info(project_bibliography);", true)) as { name: string }[];
+  if (!columns.some(({ name }) => name === "links")) {
+    await runSql(config, "ALTER TABLE project_bibliography ADD COLUMN links TEXT;");
+  }
 }
 
 export function listProjects(config: ServerConfig, includeDeleted = false): Promise<Project[]> {
@@ -184,11 +190,14 @@ export async function getProjectCanvas(config: ServerConfig, id: string, canvasI
   };
 }
 
-export type ProjectBibliography = { name: string; source: string; style: string };
+export type ProjectBibliography = { name: string; source: string; style: string; links?: CitationLinks };
 
 export async function getProjectBibliography(config: ServerConfig, id: string): Promise<ProjectBibliography | null> {
-  const output = await runSql(config, `SELECT name,source,style FROM project_bibliography WHERE project_id=${quote(id)};`, true);
-  return (JSON.parse(output.trim() || "[]") as ProjectBibliography[])[0] ?? null;
+  const output = await runSql(config, `SELECT name,source,style,links FROM project_bibliography WHERE project_id=${quote(id)};`, true);
+  const row = (JSON.parse(output.trim() || "[]") as (Omit<ProjectBibliography, "links"> & { links: string | null })[])[0];
+  if (!row) return null;
+  const { links, ...bibliography } = row;
+  return links ? { ...bibliography, links: JSON.parse(links) as ProjectBibliography["links"] } : bibliography;
 }
 
 export function saveProjectBibliography(config: ServerConfig, id: string, bibliography: ProjectBibliography | null): Promise<ProjectBibliography | null | undefined> {
@@ -197,7 +206,7 @@ export function saveProjectBibliography(config: ServerConfig, id: string, biblio
     if (!project || project.deletedAt) return;
     const now = new Date().toISOString();
     await checkedWrite(config, bibliography
-      ? `INSERT INTO project_bibliography(project_id,name,source,style) VALUES(${quote(id)},${quote(bibliography.name)},${quote(bibliography.source)},${quote(bibliography.style)}) ON CONFLICT(project_id) DO UPDATE SET name=excluded.name,source=excluded.source,style=excluded.style;
+      ? `INSERT INTO project_bibliography(project_id,name,source,style,links) VALUES(${quote(id)},${quote(bibliography.name)},${quote(bibliography.source)},${quote(bibliography.style)},${bibliography.links ? quote(JSON.stringify(bibliography.links)) : "NULL"}) ON CONFLICT(project_id) DO UPDATE SET name=excluded.name,source=excluded.source,style=excluded.style,links=excluded.links;
         UPDATE projects SET updated_at=${quote(now)} WHERE id=${quote(id)};`
       : `DELETE FROM project_bibliography WHERE project_id=${quote(id)};
         UPDATE projects SET updated_at=${quote(now)} WHERE id=${quote(id)};`);
@@ -272,7 +281,7 @@ export function createProject(config: ServerConfig, name: string, source = DEFAU
       ${palette ? `INSERT INTO project_shared_palette(project_id,source) VALUES(${quote(id)},${quote(palette)});` : ""}
       ${copyFrom ? `INSERT INTO project_pngs(project_id,key,data) SELECT ${quote(id)},key,data FROM project_pngs WHERE project_id=${quote(copyFrom)};
         INSERT INTO project_asset_details(project_id,key,name,width,height,preview) SELECT ${quote(id)},key,name,width,height,preview FROM project_asset_details WHERE project_id=${quote(copyFrom)};
-        INSERT INTO project_bibliography(project_id,name,source,style) SELECT ${quote(id)},name,source,style FROM project_bibliography WHERE project_id=${quote(copyFrom)};` : ""}
+        INSERT INTO project_bibliography(project_id,name,source,style,links) SELECT ${quote(id)},name,source,style,links FROM project_bibliography WHERE project_id=${quote(copyFrom)};` : ""}
       ${assets.map((asset) => insertAssetSql(id, asset)).join("\n")}`);
     return (await getProjectCanvas(config, id))!;
   });

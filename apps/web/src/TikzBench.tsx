@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CitationLinks } from "tikz-editor/tex/citation-links";
 import { RiAddLine, RiEditLine } from "@remixicon/react";
 import { App, ProjectBrand } from "@tikz-editor/app";
 import css from "./TikzBench.module.css";
@@ -14,7 +15,7 @@ type Project = {
   description: string;
   source: string;
   palette?: string;
-  bibliography?: { name: string; source: string; style: string } | null;
+  bibliography?: { name: string; source: string; style: string; links?: CitationLinks } | null;
   revision: number;
   thumbnailSvg: string | null;
   createdAt: string;
@@ -296,7 +297,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     onPaletteChange: async (next: string) => { await persist({ palette: next }); },
     bibliography: project.bibliography ?? null,
     resolveCitationLabels,
-    onBibliographyChange: async (next: { name: string; source: string; style: string } | null) => {
+    onBibliographyChange: async (next: Project["bibliography"]) => {
       const { bibliography } = await api<{ bibliography: Project["bibliography"] }>(`/api/projects/${id}/bibliography`, {
         method: next ? "PUT" : "DELETE", headers: { "content-type": "application/json" }, body: next ? JSON.stringify(next) : undefined
       });
