@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import css from "./TexProof.module.css";
 
-type Proof = { pdfUrl: string; source: string };
+type Proof = { pdfUrl: string; referencesUrl: string | null; source: string };
 
 export function TexProof({ projectId, canvasName, source, onClose }: { projectId: string; canvasName?: string; source: string; onClose: () => void }) {
   const [proof, setProof] = useState<Proof | null>(null);
@@ -45,7 +45,7 @@ export function TexProof({ projectId, canvasName, source, onClose }: { projectId
         const pdf = await response.blob();
         if (pdf.type !== "application/pdf") throw new Error("校样未返回 PDF，请确认服务已更新。");
         if (controller.signal.aborted || version.current !== Number(requestVersion)) return;
-        setProof({ pdfUrl: URL.createObjectURL(pdf), source });
+        setProof({ pdfUrl: URL.createObjectURL(pdf), referencesUrl: response.headers.get("x-references-pdf"), source });
         setStatus("ready");
         setMessage("");
       }).catch((error: unknown) => {
@@ -67,7 +67,11 @@ export function TexProof({ projectId, canvasName, source, onClose }: { projectId
     <section ref={dialog} className={css.modal} role="dialog" aria-modal="true" aria-labelledby="tex-proof-title" onKeyDown={(event) => { event.stopPropagation(); }}>
       <header className={css.header}>
         <div><h2 id="tex-proof-title">TeX 编译校样</h2>{canvasName && <p>{canvasName}</p>}</div>
-        <div className={css.headerActions}><span className={css.status} data-state={status}>{status === "compiling" ? "正在编译" : status === "error" ? "编译失败" : "与源码同步"}</span><button type="button" className={css.close} onClick={onClose} aria-label="关闭 TeX 校样">×</button></div>
+        <div className={css.headerActions}>
+          {proof?.referencesUrl && <a href={proof.referencesUrl} target="_blank" rel="noreferrer">参考文献 PDF</a>}
+          <span className={css.status} data-state={status}>{status === "compiling" ? "正在编译" : status === "error" ? "编译失败" : "与源码同步"}</span>
+          <button type="button" className={css.close} onClick={onClose} aria-label="关闭 TeX 校样">×</button>
+        </div>
       </header>
       <div className={css.stage} aria-busy={status === "compiling"}>
         {proof ? <iframe className={css.artwork} src={proof.pdfUrl + "#toolbar=0&navpanes=0&view=Fit"} title="当前画布的 XeLaTeX PDF" style={{ opacity: current ? 1 : 0.45 }} /> : null}

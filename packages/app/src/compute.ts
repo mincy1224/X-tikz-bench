@@ -18,6 +18,7 @@ import type { SvgViewBox } from "tikz-editor/svg/types";
 import type { EditHandle, SceneFigure } from "tikz-editor/semantic/types";
 import { renderTikzToSvgAsync, type RenderDiagnostic } from "tikz-editor/render/index";
 import type { NodeTextEngine } from "tikz-editor/text/types";
+import type { CitationLinks } from "tikz-editor/tex/citation-links";
 import type { MathJaxFont } from "tikz-editor/text/mathjax-engine";
 import { extractTexEnvironment, type TexEnvironment } from "tikz-editor/tex/environment";
 import { createHybridTextEngine, TexTextCompileError, type HybridTextEngine } from "tikz-editor/text/hybrid-engine";
@@ -79,6 +80,7 @@ export type ComputeRequest = {
   renderViewBox?: SvgViewBox | null;
   preferNativeSerif?: boolean;
   citationLabels?: Readonly<Record<string, string>>;
+  citationLinks?: CitationLinks;
   projectColors?: Readonly<Record<string, string>>;
 };
 
@@ -167,7 +169,8 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
         request.documentId ?? "default",
         request.preferNativeSerif,
         request.projectColors,
-        request.citationLabels
+        request.citationLabels,
+        request.citationLinks
       );
       const snapshot: SessionSnapshot = {
         source: request.source,
@@ -228,7 +231,7 @@ export async function computeSnapshot(request: ComputeRequest): Promise<ComputeR
     let phaseStartedAt = performance.now();
     const maybeTextEngine = getOptionalTextEngine(extractTexEnvironment(request.source), request.documentId);
     const engine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
-    const textEngine = engine && request.preferNativeSerif ? { ...engine, preferNativeSerif: true, citationLabels: request.citationLabels } : engine;
+    const textEngine = engine && request.preferNativeSerif ? { ...engine, preferNativeSerif: true, citationLabels: request.citationLabels, citationLinks: request.citationLinks } : engine;
     phases.textEngine = performance.now() - phaseStartedAt;
     phaseStartedAt = performance.now();
     const result = await renderTikzToSvgAsync(request.source, {
@@ -341,7 +344,8 @@ async function computeSnapshotIncremental(
   documentId: string,
   preferNativeSerif?: boolean,
   projectColors?: Readonly<Record<string, string>>,
-  citationLabels?: Readonly<Record<string, string>>
+  citationLabels?: Readonly<Record<string, string>>,
+  citationLinks?: CitationLinks
 ): Promise<{
   parse: ParseTikzResult;
   semantic: EvaluateTikzResult;
@@ -355,7 +359,7 @@ async function computeSnapshotIncremental(
   let phaseStartedAt = performance.now();
   const maybeTextEngine = getOptionalTextEngine(extractTexEnvironment(source), documentId);
   const engine = maybeTextEngine instanceof Promise ? await maybeTextEngine : maybeTextEngine;
-  const textEngine = engine && preferNativeSerif ? { ...engine, preferNativeSerif: true, citationLabels } : engine;
+  const textEngine = engine && preferNativeSerif ? { ...engine, preferNativeSerif: true, citationLabels, citationLinks } : engine;
   phases.textEngine = performance.now() - phaseStartedAt;
   phaseStartedAt = performance.now();
   const parseSession = getIncrementalParseSession();

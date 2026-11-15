@@ -5,14 +5,14 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import type { ProjectBibliography } from "../projects/store.js";
-import { citationLinkPreamble } from "./citation-links.js";
+import { citationLinkPreamble, createReferencesDocument } from "./citation-links.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
 import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
 import { DEFAULT_PROJECT_FONT, PROJECT_PALETTE_BLOCK, withoutProjectFontBlock, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
 
 export type LatexDiagnostic = { file: string; line: number; message: string };
 export type CompileResult = { svg: string; log: string; diagnostics: LatexDiagnostic[]; markers: ObjectMarker[] };
-export type PdfCompileResult = { pdf: Buffer; log: string; diagnostics: LatexDiagnostic[] };
+export type PdfCompileResult = { pdf: Buffer; referencesPdf?: Buffer; log: string; diagnostics: LatexDiagnostic[] };
 export type CompileProfile = "auto" | "latex" | "xelatex";
 
 const FONT_COMMAND = /\\(?:set(?:main|sans|mono)font|newfontfamily|newfontface|defaultfontfeatures)\b/u;
@@ -26,8 +26,8 @@ export function resolveCompileProfile(source: string, profile: CompileProfile = 
     ? "xelatex" : "latex";
 }
 
-function engineArgs(profile: "latex" | "xelatex"): string[] {
-  return [...(profile === "xelatex" ? ["-no-pdf"] : []), "-no-shell-escape", "-interaction=batchmode", "-file-line-error", "-halt-on-error", "input.tex"];
+function engineArgs(profile: "latex" | "xelatex", file = "input.tex"): string[] {
+  return [...(profile === "xelatex" ? ["-no-pdf"] : []), "-no-shell-escape", "-interaction=batchmode", "-file-line-error", "-halt-on-error", file];
 }
 const MAX_PROCESS_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MAX_LOG_BYTES = 256 * 1024;
@@ -166,6 +166,7 @@ export async function resolveBibliographyLabels(config: ServerConfig, bibliograp
     await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     await writeFile(path.join(directory, "input.aux"), [
       ...keys.map((key) => "\\citation{" + key + "}"),
+      "\\citation{*}",
       "\\bibstyle{" + bibliography.style + "}",
       "\\bibdata{references}",
       ""
@@ -173,9 +174,10 @@ export async function resolveBibliographyLabels(config: ServerConfig, bibliograp
     await runBibtex(config, directory, Date.now() + config.timeoutMs);
     const output = await readFile(path.join(directory, "input.bbl"), "utf8");
     const items = [...output.matchAll(/^\\bibitem\s*(?:\[([^\]]+)\]\s*)?\{([^{}]+)\}/gmu)];
-    return Object.fromEntries(items.map(([, label, key], index) => [
-      key, label?.replace(/(?:\\protect\s*)?\\etalchar\{([^{}]+)\}/gu, "$1") ?? String(index + 1)
-    ]));
+    const cited = new Set(keys);
+    return Object.fromEntries(items.flatMap(([, label, key], index) => cited.has(key)
+      ? [[key, label?.replace(/(?:\\protect\s*)?\\etalchar\{([^{}]+)\}/gu, "$1") ?? String(index + 1)]]
+      : []));
   } finally {
     await rm(directory, { recursive: true, force: true }).catch(() => {});
   }
@@ -217,8 +219,7 @@ export async function compileLatex(source: string, config: ServerConfig, request
     await stagePngs(directory, pngs);
     if (bibliography) await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
-    const svgBibliography = bibliography?.links?.enabled ? { ...bibliography, links: undefined } : bibliography;
-    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, svgBibliography), "utf8");
+    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography, null), "utf8");
     const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined, projectDefaults);
     const input = profile === "xelatex" ? "input.xdv" : "input.dvi";
     const dviPath = path.join(directory, input);
@@ -237,7 +238,7 @@ export async function compileLatex(source: string, config: ServerConfig, request
   }
 }
 
-export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto", projectDefaults = false, bibliography?: ProjectBibliography | null): string {
+export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto", projectDefaults = false, bibliography?: ProjectBibliography | null, citationTarget: string | null = "references.pdf"): string {
   if (bibliography) {
     const document = createStandaloneDocument(source, requestedProfile, projectDefaults);
     const preambleEnd = document.indexOf("\\begin{document}");
@@ -245,9 +246,10 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
     const packages = new Set(extractTexEnvironment(preamble).packages.map(({ name }) => name));
     const citePackage = ["cite", "natbib", "biblatex"].some((name) => packages.has(name)) ? "" : "\\usepackage{cite}\n";
     const linkSettings = bibliography.links ? "% x-tikz-bench: citation-links " + JSON.stringify(bibliography.links) + "\n" : "";
-    const linkSetup = bibliography.links?.enabled ? citationLinkPreamble(bibliography.source, bibliography.links, !packages.has("hyperref")) + "\n" : "";
+    const linkSetup = bibliography.links?.enabled ? citationLinkPreamble(bibliography.links, !packages.has("hyperref"), citationTarget) + "\n" : "";
     const setup = `% x-tikz-bench: bibliography start\n${citePackage}\\bibliographystyle{${bibliography.style}}\n${linkSettings}${linkSetup}% x-tikz-bench: bibliography end\n`;
-    const suffix = "\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup\n";
+    const includeAll = /@(?!comment\b|string\b|preamble\b)\w+\s*[({]/iu.test(bibliography.source);
+    const suffix = (includeAll ? "\\nocite{*}\n" : "") + "\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup\n";
     const withSetup = document.slice(0, preambleEnd) + setup + document.slice(preambleEnd);
     return withSetup.replace(/\\end\{document\}\s*$/u, `${suffix}\\end{document}\n`);
   }
@@ -285,7 +287,7 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
   return `\\documentclass[border=2pt]{standalone}\n${preamble}\n${font}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${plotSetup}\n\\begin{document}\n${content}\n\\end{document}\n`;
 }
 
-export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false, bibliography?: ProjectBibliography | null): Promise<PdfCompileResult> {
+export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false, bibliography?: ProjectBibliography | null, citationTarget?: string): Promise<PdfCompileResult> {
   const deadline = Date.now() + config.timeoutMs;
   const profile = resolveCompileProfile(source, projectDefaults && requestedProfile === "auto" ? "xelatex" : requestedProfile);
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-pdf-"));
@@ -293,13 +295,28 @@ export async function compileLatexPdf(source: string, config: ServerConfig, requ
     await stagePngs(directory, pngs);
     if (bibliography) await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
-    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography), "utf8");
+    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography, citationTarget), "utf8");
     const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined, projectDefaults);
     const pdf = await run(config.dvipdfmxBin, ["-q", "-o", "output.pdf", profile === "xelatex" ? "input.xdv" : "input.dvi"], directory, Math.max(1, deadline - Date.now()), true, fontConfig);
     if (pdf.code !== 0) throw new LatexCompileError(pdf.output || "dvipdfmx conversion failed.", log, diagnostics);
     const output = await readFile(path.join(directory, "output.pdf"));
     if (output.length < 5 || output.subarray(0, 5).toString("ascii") !== "%PDF-") throw new Error("dvipdfmx returned an invalid PDF.");
-    return { pdf: output, log, diagnostics };
+    let referencesPdf: Buffer | undefined;
+    if (bibliography && existsSync(path.join(directory, "input.bbl"))) {
+      await writeFile(path.join(directory, "references.tex"), createReferencesDocument("input.bbl"), "utf8");
+      const referencePass = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin,
+        engineArgs(profile, "references.tex"), directory, Math.max(1, deadline - Date.now()), true, fontConfig);
+      if (referencePass.code !== 0) {
+        const details = await readFile(path.join(directory, "references.log"), "utf8").catch(() => referencePass.output);
+        const failures = parseLatexDiagnostics(details);
+        throw new LatexCompileError("参考文献 PDF 编译失败。" + (failures[0]?.message ?? ""), details.slice(-MAX_LOG_BYTES), failures);
+      }
+      const referenceConversion = await run(config.dvipdfmxBin, ["-q", "-o", "references.pdf", profile === "xelatex" ? "references.xdv" : "references.dvi"],
+        directory, Math.max(1, deadline - Date.now()), true, fontConfig);
+      if (referenceConversion.code !== 0) throw new LatexCompileError(referenceConversion.output || "参考文献 PDF 转换失败。", log, diagnostics);
+      referencesPdf = await readFile(path.join(directory, "references.pdf"));
+    }
+    return { pdf: output, referencesPdf, log, diagnostics };
   } finally {
     await rm(directory, { recursive: true, force: true }).catch(() => {});
   }

@@ -1,3 +1,5 @@
+import type { CitationLinks } from "./citation-links.js";
+
 const citation = /\\cite\b\s*(?:\[([^\]]*)\]\s*)?\{([^{}]+)\}/gu;
 
 function splitKeys(value: string): string[] {
@@ -9,8 +11,8 @@ export function collectCitationKeys(source: string): string[] {
   return [...new Set([...uncommented.matchAll(citation)].flatMap((match) => splitKeys(match[2])))];
 }
 
-export function renderCitationLabels(text: string, labels: Readonly<Record<string, string>>): string {
-  return text.replace(citation, (_match, note: string | undefined, keys: string) => {
+export function renderCitationLabels(text: string, labels: Readonly<Record<string, string>>, settings?: CitationLinks, mathMode = false): string {
+  return text.replace(citation, (_match, note: string | undefined, keys: string, offset: number) => {
     const values = splitKeys(keys).map((key) => Object.hasOwn(labels, key) ? labels[key] : "?");
     if (values.every((value) => /^[1-9]\d*$/u.test(value))) {
       const numbers = [...new Set(values.map(Number))].sort((a, b) => a - b);
@@ -23,6 +25,13 @@ export function renderCitationLabels(text: string, labels: Readonly<Record<strin
         start = end + 1;
       }
     }
-    return "[" + values.join(", ") + (note ? ", " + note : "") + "]";
+    const label = "[" + values.join(", ") + (note ? ", " + note : "") + "]";
+    if (!settings?.enabled || settings.format === "plain") return label;
+    const delimiters = text.slice(0, offset).match(/(?<!\\)(?:\$\$?|\\[()[\]])/gu);
+    const inMath = mathMode || Boolean(delimiters && delimiters.length % 2);
+    const content = inMath ? label : "\\text{" + label + "}";
+    const decorated = settings.format === "underline" ? "\\underline{" + content + "}" : content;
+    const colored = "\\textcolor{" + settings.color + "}{" + decorated + "}";
+    return inMath ? colored : "$" + colored + "$";
   });
 }

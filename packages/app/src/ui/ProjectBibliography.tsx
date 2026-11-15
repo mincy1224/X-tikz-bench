@@ -67,7 +67,7 @@ export function ProjectBibliography({ bibliography, onChange }: {
         </label>
         <label>链接颜色 <input type="color" aria-label="链接颜色" value={links.color}
           disabled={!links.enabled || links.format === "plain"} onChange={(event) => { updateLinks({ color: event.currentTarget.value }); }} /></label>
-        <span>优先使用 DOI，其次使用 URL</span>
+        <span>跳转到 references.pdf 中对应的文献</span>
       </div>
       <textarea aria-label="BibTeX 文献内容" spellCheck={false} value={draft.source} onChange={(event) => { setDraft({ ...draft, source: event.currentTarget.value }); setSaved(false); }} />
       {keys.length > 0 && <div className={css.bibliographyKeys}>{keys.slice(0, 30).map((key) => <button key={key} type="button" className={css.projectExport} title={`复制 \\cite{${key}}`} onClick={() => { void navigator.clipboard.writeText(`\\cite{${key}}`).catch(() => { setError("无法访问剪贴板。"); }); }}>{key}</button>)}</div>}

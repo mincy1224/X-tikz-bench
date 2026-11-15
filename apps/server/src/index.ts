@@ -1,9 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError, resolveBibliographyLabels } from "./latex/compiler.js";
 import { isCitationLinks } from "../../../packages/core/src/tex/citation-links.js";
+import { createReferencesDocument } from "./latex/citation-links.js";
 import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectBibliography, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, saveProjectBibliography, softDeleteProject, storeProjectPng, updateProject, type ProjectBibliography } from "./projects/store.js";
 import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
 import { PROJECT_PALETTE_BLOCK, splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
@@ -13,9 +15,10 @@ import { checkTexPackages, compileTextBatch, validateTexTextBatch } from "./late
 
 const config = loadConfig();
 let activeCompiles = 0;
+const proofReferences = new Map<string, Buffer>();
 const contentTypes: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
 const securityHeaders = {
-  "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -28,10 +31,11 @@ function json(response: http.ServerResponse, status: number, body: unknown): voi
   response.end(data);
 }
 
-function attachment(response: http.ServerResponse, contentType: string, fileName: string, data: string | Buffer): void {
+function attachment(response: http.ServerResponse, contentType: string, fileName: string, data: string | Buffer, headers?: Record<string, string>): void {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "") || "tikz-project";
   response.writeHead(200, {
     ...securityHeaders,
+    ...headers,
     "content-type": contentType,
     "content-disposition": `attachment; filename="${safeName}"`,
     "content-length": Buffer.byteLength(data),
@@ -71,6 +75,21 @@ async function serveStatic(response: http.ServerResponse, pathname: string): Pro
 async function handleRequest(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
   try {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+    const referenceMatch = /^\/api\/latex\/proof\/([0-9a-f-]+)\/references\.pdf$/u.exec(url.pathname);
+    if (request.method === "GET" && referenceMatch) {
+      const pdf = proofReferences.get(referenceMatch[1]);
+      if (!pdf) { json(response, 404, { error: "参考文献校样已过期，请重新打开校样。" }); return; }
+      response.writeHead(200, {
+        ...securityHeaders,
+        "content-security-policy": "default-src 'none'; frame-ancestors 'self'",
+        "x-frame-options": "SAMEORIGIN",
+        "content-type": "application/pdf",
+        "content-length": pdf.length,
+        "cache-control": "no-store"
+      });
+      response.end(pdf);
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/health") {
       json(response, 200, { ok: true });
       return;
@@ -234,8 +253,21 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
             "assets/": new Uint8Array()
           } : { "main.tex": strToU8(tex), "assets/": new Uint8Array() };
           for (const [name, bytes] of pngs) entries[name] = new Uint8Array(bytes);
-          if (bibliography) entries["references.bib"] = strToU8(bibliography.source);
-          attachment(response, "application/zip", `${project.name}.zip`, Buffer.from(zipSync(entries, { level: 0 })));
+          const headers: Record<string, string> = {};
+          if (bibliography) {
+            entries["references.bib"] = strToU8(bibliography.source);
+            entries["references.tex"] = strToU8(createReferencesDocument("main.bbl"));
+            if (activeCompiles < config.maxConcurrency) {
+              activeCompiles++;
+              try {
+                const proof = await compileLatexPdf(exportSource, config, "xelatex", pngs, true, bibliography);
+                if (proof.referencesPdf) entries["references.pdf"] = new Uint8Array(proof.referencesPdf);
+              } catch (error) {
+                headers["x-references-error"] = encodeURIComponent((error instanceof Error ? error.message : String(error)).slice(0, 360));
+              } finally { activeCompiles--; }
+            } else headers["x-references-error"] = encodeURIComponent("服务器正在编译，请稍后重试。");
+          }
+          attachment(response, "application/zip", `${project.name}.zip`, Buffer.from(zipSync(entries, { level: 0 })), headers);
         } catch (error) {
           json(response, 422, { error: error instanceof Error ? error.message : String(error) });
         }
@@ -302,8 +334,17 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
         const pngs = await getReferencedProjectPngs(config, typeof payload.projectId === "string" ? payload.projectId : undefined, payload.source);
         const bibliography = typeof payload.projectId === "string" ? await getProjectBibliography(config, payload.projectId) : null;
         if (payload.proof === true) {
-          const result = await compileLatexPdf(payload.source, config, "xelatex", pngs, true, bibliography);
-          response.writeHead(200, { ...securityHeaders, "content-type": "application/pdf", "content-length": result.pdf.length, "cache-control": "no-store" });
+          const id = randomUUID();
+          const refsPath = `/api/latex/proof/${id}/references.pdf`;
+          const origin = request.headers.origin;
+          const citationTarget = origin && /^https?:\/\/[a-z0-9.:[\]-]+$/iu.test(origin) ? origin + refsPath : undefined;
+          const result = await compileLatexPdf(payload.source, config, "xelatex", pngs, true, bibliography, citationTarget);
+          if (result.referencesPdf) {
+            proofReferences.set(id, result.referencesPdf);
+            if (proofReferences.size > 12) proofReferences.delete(proofReferences.keys().next().value!);
+          }
+          response.writeHead(200, { ...securityHeaders, "content-type": "application/pdf", "content-length": result.pdf.length, "cache-control": "no-store",
+            ...(result.referencesPdf ? { "x-references-pdf": refsPath } : {}) });
           response.end(result.pdf);
           return;
         }

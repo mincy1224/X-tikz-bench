@@ -263,6 +263,8 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     anchor.download = `${canvasId === "main" || !canvasName ? name : `${name}-${canvasName}`}.${blob.type === "application/zip" ? "zip" : kind}`;
     anchor.click();
     URL.revokeObjectURL(url);
+    const referencesError = response.headers.get("x-references-error");
+    if (referencesError) window.alert("已导出 LaTeX 源文件。参考文献 PDF 未生成：" + decodeURIComponent(referencesError));
   }, [canvasId, fullSource, id, project?.canvases, project?.name, withPalette]);
 
   const rename = useCallback(() => { setEditInfo(true); }, []);

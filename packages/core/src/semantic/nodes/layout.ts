@@ -142,7 +142,7 @@ export function resolveNodeLayout(
 
   const noWidthHalignEnabled = (explicitAlign != null && explicitAlign !== "none") || hasNoWidthHalignHeader;
   const explicitLineBreaksActive = textWidth != null || noWidthHalignEnabled;
-  const displayText = textEngine?.citationLabels ? renderCitationLabels(text, textEngine.citationLabels) : text;
+  const displayText = textEngine?.citationLabels ? renderCitationLabels(text, textEngine.citationLabels, textEngine.citationLinks, textMode === "math") : text;
   let normalizedText = normalizeTextForLineBreakPolicy(displayText, explicitLineBreaksActive);
   let plainStyle = style;
   let nativeSerif = false;

@@ -116,13 +116,14 @@ test("a project bibliography is managed outside canvas code and survives ZIP imp
   await page.getByLabel("链接颜色").fill("#a12468");
   await page.getByRole("button", { name: "保存更改" }).click();
   await expect.poll(async () => (await (await request.get(`/api/projects/${projectId}`)).json()).project.bibliography.style).toBe("alpha");
-  await expect(page.getByTestId("canvas-svg-layer")).toContainText("See [Knu84]");
+  await expect(page.getByTestId("canvas-svg-layer").locator('[fill="#a12468" i], [style*="#a12468" i]').first()).toBeAttached();
   expect(await readSource(page)).not.toContain("bibliographystyle");
   const archive = unzipSync(await (await request.post(`/api/projects/${projectId}/export/tex`, { data: { source: await readSource(page) } })).body());
   expect(strFromU8(archive["main.tex"])).toContain("\\bibliographystyle{alpha}");
   expect(strFromU8(archive["main.tex"])).toContain("\\bibliography{references}");
   expect(strFromU8(archive["main.tex"])).toContain("\\definecolor{xtbcitelink}{HTML}{a12468}");
   expect(strFromU8(archive["references.bib"])).toContain("knuth1984");
+  expect(strFromU8(archive["references.tex"])).toContain("\\input{main.bbl}");
   expect(strFromU8(archive["figure.tikz"])).toContain("\\cite{knuth1984}");
   const imported = await request.post(`/api/projects/import?name=Bibliography%20roundtrip%20${Date.now()}`, {
     headers: { "content-type": "application/zip" }, data: Buffer.from(zipSync(archive))

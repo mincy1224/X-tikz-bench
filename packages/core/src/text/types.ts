@@ -1,3 +1,5 @@
+import type { CitationLinks } from "../tex/citation-links.js";
+
 export type NodeTextFontStyle = "normal" | "italic";
 export type NodeTextFontWeight = "normal" | "bold";
 export type NodeTextFontFamily = "serif" | "sans" | "monospace";
@@ -60,6 +62,7 @@ export type NodeTextRenderInfo =
 
 export type NodeTextEngine = {
   citationLabels?: Readonly<Record<string, string>>;
+  citationLinks?: CitationLinks;
   preferNativeSerif?: boolean;
   validate(text: string): NodeTextValidationIssue | null;
   measure(request: NodeTextMeasureRequest): NodeTextMetrics | null;

@@ -103,7 +103,7 @@ export async function importProjectArchive(bytes: Buffer, maxSourceBytes: number
   });
   const source = `${picture.prefix}\n${body}\n${picture.suffix}`
     .replace(/% x-tikz-bench: bibliography start[\s\S]*?% x-tikz-bench: bibliography end\s*/u, "")
-    .replace(/\\begingroup\\setbox0=\\vbox\{\\bibliography\{references\}\}\\endgroup\s*/u, "");
+    .replace(/(?:\\nocite\{\*\}\s*)?\\begingroup\\setbox0=\\vbox\{\\bibliography\{references\}\}\\endgroup\s*/u, "");
   if (Buffer.byteLength(source, "utf8") > maxSourceBytes) throw new Error("导入后的 TeX 源码过大。");
   return { source, assets: [...new Map([...images.values()].map((asset) => [asset.key, asset])).values()], bibliography };
 }
