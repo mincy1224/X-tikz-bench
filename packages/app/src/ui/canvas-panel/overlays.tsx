@@ -1120,8 +1120,7 @@ export function HandleOverlay({
                 x2={display.point.x}
                 y2={display.point.y}
                 strokeWidth={handleStrokeWidth}
-                onPointerDown={onPointerDown}
-                onContextMenu={onContextMenu}
+                pointerEvents="none"
                 data-handle-kind="rotate-element-stem"
                 data-source-id={display.elementId}
               />

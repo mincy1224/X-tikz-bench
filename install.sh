@@ -40,7 +40,7 @@ if [[ -z "$tex_dir" ]] && command -v latex >/dev/null; then tex_dir=$(dirname "$
 if [[ -z "$tex_dir" || ! -x "$tex_dir/xelatex" ]]; then
   tex_dir=$(find /usr/local/texlive -maxdepth 4 -type f -name dvisvgm 2>/dev/null | sort -Vr | head -n 1 | xargs -r dirname) || true
 fi
-for tool in latex xelatex dvisvgm dvipdfmx kpsewhich; do
+for tool in latex xelatex bibtex dvisvgm dvipdfmx kpsewhich; do
   [[ -x "$tex_dir/$tool" ]] || { echo "Missing TeX executable: $tool. Set TIKZ_TEX_BIN_DIR to an existing TeX installation." >&2; exit 1; }
 done
 cd "$root"

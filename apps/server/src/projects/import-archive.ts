@@ -5,6 +5,7 @@ import { prepareAsset, type PreparedAsset } from "./prepare-asset.js";
 import { splitProjectSource } from "../../../../packages/core/src/tex/project-source.js";
 import { projectPngText } from "../../../../packages/core/src/edit/project-png.js";
 import { parseLength } from "../../../../packages/core/src/semantic/coords/parse-length.js";
+import type { ProjectBibliography } from "./store.js";
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 
@@ -14,18 +15,25 @@ function archivePath(name: string): string {
   return path;
 }
 
-export async function importProjectArchive(bytes: Buffer, maxSourceBytes: number): Promise<{ source: string; assets: PreparedAsset[] }> {
+export async function importProjectArchive(bytes: Buffer, maxSourceBytes: number): Promise<{ source: string; assets: PreparedAsset[]; bibliography: ProjectBibliography | null }> {
   let total = 0, count = 0;
   const archive = unzipSync(bytes, { filter: ({ name, originalSize }) => {
     archivePath(name);
     if (++count > 256 || (total += originalSize) > MAX_PROJECT_PNG_BYTES + 4 * maxSourceBytes) {
       throw new Error("压缩包包含过多文件或解压后过大。");
     }
-    return /\.(?:tex|tikz|png|pdf|svg)$/iu.test(name);
+    return /\.(?:tex|tikz|png|pdf|svg|bib)$/iu.test(name);
   } });
   const entries = new Map(Object.entries(archive).map(([name, data]) => [archivePath(name), data]));
   const main = entries.has("main.tex") ? "main.tex" : [...entries.keys()].find((name) => basename(name) === "main.tex");
   if (!main) throw new Error("压缩包中缺少 main.tex。");
+  const bibName = [...entries.keys()].find((name) => name === join(dirname(main), "references.bib")) ??
+    [...entries.keys()].find((name) => dirname(name) === dirname(main) && name.endsWith(".bib"));
+  const bibData = bibName ? entries.get(bibName) : undefined;
+  if (bibData && bibData.length > maxSourceBytes) throw new Error(".bib 文件过大。");
+  const mainText = utf8.decode(entries.get(main));
+  const bibStyle = /\\bibliographystyle\{(plain|unsrt|alpha|abbrv)\}/u.exec(mainText)?.[1] ?? "plain";
+  const bibliography = bibData ? { name: basename(bibName!), source: utf8.decode(bibData), style: bibStyle } : null;
   const active = new Set<string>();
   let expandedBytes = 0;
   const expand = (file: string): string => {
@@ -86,7 +94,9 @@ export async function importProjectArchive(bytes: Buffer, maxSourceBytes: number
     }
     return match.replace(`{${filename}}`, `{assets/${asset.key}}`);
   });
-  const source = `${picture.prefix}\n${body}\n${picture.suffix}`;
+  const source = `${picture.prefix}\n${body}\n${picture.suffix}`
+    .replace(/% x-tikz-bench: bibliography start[\s\S]*?% x-tikz-bench: bibliography end\s*/u, "")
+    .replace(/\\begingroup\\setbox0=\\vbox\{\\bibliography\{references\}\}\\endgroup\s*/u, "");
   if (Buffer.byteLength(source, "utf8") > maxSourceBytes) throw new Error("导入后的 TeX 源码过大。");
-  return { source, assets: [...new Map([...images.values()].map((asset) => [asset.key, asset])).values()] };
+  return { source, assets: [...new Map([...images.values()].map((asset) => [asset.key, asset])).values()], bibliography };
 }

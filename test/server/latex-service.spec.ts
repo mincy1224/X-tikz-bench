@@ -89,3 +89,13 @@ it("adds the project text font without overriding newtxmath or an explicit main 
   const custom = createStandaloneDocument("\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n" + source, "xelatex", true);
   expect(custom).not.toContain("Times New Roman");
 });
+
+it("places project bibliography setup outside the editable TikZ body", () => {
+  const document = createStandaloneDocument(String.raw`\node {See \cite{knuth1984}};`, "xelatex", true,
+    { name: "library.bib", style: "alpha", source: "@book{knuth1984,title={The TeXbook}}" });
+  expect(document).toContain("\\usepackage{cite}");
+  expect(document).toContain("\\bibliographystyle{alpha}");
+  expect(document).toContain("\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup");
+  expect(document.indexOf("\\bibliographystyle{alpha}")).toBeLessThan(document.indexOf("\\begin{document}"));
+  expect(document.indexOf("\\bibliography{references}")).toBeGreaterThan(document.indexOf("\\end{tikzpicture}"));
+});

@@ -322,8 +322,15 @@ function buildExternalSourceSyncChanges(
       trustedPatch: true
     };
   }
+  // Preserve CodeMirror's caret and source selection when undoing a structural
+  // edit. Replacing the entire document maps both ends to the document end.
+  let from = 0;
+  while (from < currentSource.length && from < nextSource.length && currentSource[from] === nextSource[from]) from++;
+  let oldTo = currentSource.length;
+  let newTo = nextSource.length;
+  while (oldTo > from && newTo > from && currentSource[oldTo - 1] === nextSource[newTo - 1]) { oldTo--; newTo--; }
   return {
-    changes: { from: 0, to: currentSource.length, insert: nextSource },
+    changes: { from, to: oldTo, insert: nextSource.slice(from, newTo) },
     trustedPatch: false
   };
 }
@@ -436,9 +443,14 @@ export class ExternalSourceSyncManager {
     );
     const patchCount = Array.isArray(syncChanges.changes) ? syncChanges.changes.length : 1;
     const mode = Array.isArray(syncChanges.changes) ? "patch" : "replace";
+    const selectedRange = this.view.state.selection.main;
+    const selectedText = selectedRange.empty ? "" : this.view.state.doc.sliceString(selectedRange.from, selectedRange.to);
+    const matchingRange = selectedText && nextSource.indexOf(selectedText) === nextSource.lastIndexOf(selectedText)
+      ? nextSource.indexOf(selectedText) : -1;
     const startedAt = performance.now();
     dispatchSelectionWithStableHorizontalScroll(this.view, {
       changes: syncChanges.changes,
+      ...(matchingRange >= 0 ? { selection: { anchor: matchingRange, head: matchingRange + selectedText.length } } : {}),
       annotations: [
         Transaction.addToHistory.of(false),
         isolateHistory.of("before"),
@@ -1124,7 +1136,7 @@ export function SourcePanel() {
       annotations: [Transaction.addToHistory.of(false)],
       scrollIntoView: autoRevealSelection
     });
-  }, [selectedElementIds]);
+  }, [selectedElementIds, snapshot.scene, snapshot.parseResult]);
 
   // ── Sync store source → CodeMirror (for WYSIWYG changes) ───────────────────
   useExternalSourceSync(

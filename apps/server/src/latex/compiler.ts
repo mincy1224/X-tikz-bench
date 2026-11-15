@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
+import type { ProjectBibliography } from "../projects/store.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
 import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
 import { DEFAULT_PROJECT_FONT, PROJECT_PALETTE_BLOCK, withoutProjectFontBlock, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
@@ -151,23 +152,37 @@ async function stagePngs(directory: string, pngs?: ReadonlyMap<string, Buffer>):
   }
 }
 
-export async function compileLatex(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false): Promise<CompileResult> {
+async function runLatexPasses(directory: string, config: ServerConfig, profile: "latex" | "xelatex", deadline: number, fontConfig: string | undefined, bibliography?: ProjectBibliography): Promise<{ log: string; diagnostics: LatexDiagnostic[] }> {
+  const command = profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin;
+  const execute = async () => {
+    const result = await run(command, engineArgs(profile), directory, Math.max(1, deadline - Date.now()), true, fontConfig);
+    const fullLog = await readFile(path.join(directory, "input.log"), "utf8").catch(() => result.output);
+    const log = fullLog.slice(-MAX_LOG_BYTES);
+    const diagnostics = parseLatexDiagnostics(log);
+    if (result.code !== 0) throw new LatexCompileError(diagnostics[0] ? `${diagnostics[0].file}:${diagnostics[0].line}: ${diagnostics[0].message}` : "LaTeX compilation failed.", log, diagnostics);
+    return { log, diagnostics };
+  };
+  let output = await execute();
+  if (bibliography && /\\citation\{/u.test(await readFile(path.join(directory, "input.aux"), "utf8"))) {
+    const bibtex = await run(config.bibtexBin ?? "bibtex", ["input"], directory, Math.max(1, deadline - Date.now()), true, fontConfig);
+    if (bibtex.code !== 0 || /I didn't find a database entry for/u.test(bibtex.output)) {
+      throw new LatexCompileError(bibtex.output.trim() || "BibTeX failed.", bibtex.output.slice(-MAX_LOG_BYTES), []);
+    }
+    output = await execute();
+  }
+  return output;
+}
+
+export async function compileLatex(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false, bibliography?: ProjectBibliography | null): Promise<CompileResult> {
   const deadline = Date.now() + config.timeoutMs;
   const profile = resolveCompileProfile(source, projectDefaults && requestedProfile === "auto" ? "xelatex" : requestedProfile);
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-"));
   try {
     await stagePngs(directory, pngs);
+    if (bibliography) await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
-    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults), "utf8");
-    const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true, fontConfig);
-    const logPath = path.join(directory, "input.log");
-    const fullLog = await readFile(logPath, "utf8").catch(() => latex.output);
-    const log = fullLog.slice(-MAX_LOG_BYTES);
-    const diagnostics = parseLatexDiagnostics(log);
-    if (latex.code !== 0) {
-      const summary = diagnostics[0] ? `${diagnostics[0].file}:${diagnostics[0].line}: ${diagnostics[0].message}` : "LaTeX compilation failed.";
-      throw new LatexCompileError(summary, log, diagnostics);
-    }
+    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography), "utf8");
+    const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined);
     const input = profile === "xelatex" ? "input.xdv" : "input.dvi";
     const dviPath = path.join(directory, input);
     await stat(dviPath);
@@ -185,7 +200,18 @@ export async function compileLatex(source: string, config: ServerConfig, request
   }
 }
 
-export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto", projectDefaults = false): string {
+export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto", projectDefaults = false, bibliography?: ProjectBibliography | null): string {
+  if (bibliography) {
+    const document = createStandaloneDocument(source, requestedProfile, projectDefaults);
+    const preambleEnd = document.indexOf("\\begin{document}");
+    const setup = `\\usepackage{cite}\n% x-tikz-bench: bibliography start\n\\bibliographystyle{${bibliography.style}}\n% x-tikz-bench: bibliography end\n`;
+    const preamble = preambleEnd >= 0 ? document.slice(0, preambleEnd) : "";
+    const suffix = "\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup\n";
+    const withSetup = preambleEnd >= 0 && !/\\usepackage(?:\[[^\]]*\])?\{(?:cite|natbib|biblatex)\}/u.test(preamble)
+      ? document.slice(0, preambleEnd) + setup + document.slice(preambleEnd)
+      : document.slice(0, preambleEnd) + setup.replace("\\usepackage{cite}\n", "") + document.slice(preambleEnd);
+    return withSetup.replace(/\\end\{document\}\s*$/u, `${suffix}\\end{document}\n`);
+  }
   const palette = projectDefaults ? PROJECT_PALETTE_BLOCK.exec(source)?.[0] : undefined;
   if (palette) {
     const document = createStandaloneDocument(withoutProjectPalette(source), requestedProfile, projectDefaults);
@@ -220,22 +246,16 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
   return `\\documentclass[border=2pt]{standalone}\n${preamble}\n${font}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${plotSetup}\n\\begin{document}\n${content}\n\\end{document}\n`;
 }
 
-export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false): Promise<PdfCompileResult> {
+export async function compileLatexPdf(source: string, config: ServerConfig, requestedProfile: CompileProfile = "auto", pngs?: ReadonlyMap<string, Buffer>, projectDefaults = false, bibliography?: ProjectBibliography | null): Promise<PdfCompileResult> {
   const deadline = Date.now() + config.timeoutMs;
   const profile = resolveCompileProfile(source, projectDefaults && requestedProfile === "auto" ? "xelatex" : requestedProfile);
   const directory = await mkdtemp(path.join(os.tmpdir(), "tikz-bench-pdf-"));
   try {
     await stagePngs(directory, pngs);
+    if (bibliography) await writeFile(path.join(directory, "references.bib"), bibliography.source, "utf8");
     const fontConfig = profile === "xelatex" ? await prepareFontConfig(directory) : undefined;
-    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults), "utf8");
-    const latex = await run(profile === "xelatex" ? config.xelatexBin ?? "xelatex" : config.latexBin, engineArgs(profile), directory, config.timeoutMs, true, fontConfig);
-    const fullLog = await readFile(path.join(directory, "input.log"), "utf8").catch(() => latex.output);
-    const log = fullLog.slice(-MAX_LOG_BYTES);
-    const diagnostics = parseLatexDiagnostics(log);
-    if (latex.code !== 0) {
-      const summary = diagnostics[0] ? `${diagnostics[0].file}:${diagnostics[0].line}: ${diagnostics[0].message}` : "LaTeX compilation failed.";
-      throw new LatexCompileError(summary, log, diagnostics);
-    }
+    await writeFile(path.join(directory, "input.tex"), createStandaloneDocument(source, profile, projectDefaults, bibliography), "utf8");
+    const { log, diagnostics } = await runLatexPasses(directory, config, profile, deadline, fontConfig, bibliography ?? undefined);
     const pdf = await run(config.dvipdfmxBin, ["-q", "-o", "output.pdf", profile === "xelatex" ? "input.xdv" : "input.dvi"], directory, Math.max(1, deadline - Date.now()), true, fontConfig);
     if (pdf.code !== 0) throw new LatexCompileError(pdf.output || "dvipdfmx conversion failed.", log, diagnostics);
     const output = await readFile(path.join(directory, "output.pdf"));
@@ -247,7 +267,7 @@ export async function compileLatexPdf(source: string, config: ServerConfig, requ
 }
 
 export async function checkLatex(config: ServerConfig): Promise<{ available: boolean; details: string }> {
-  const commands = [["LaTeX", config.latexBin], ["XeLaTeX", config.xelatexBin ?? "xelatex"], ["SVG", config.dvisvgmBin], ["PDF", config.dvipdfmxBin]] as const;
+  const commands = [["LaTeX", config.latexBin], ["XeLaTeX", config.xelatexBin ?? "xelatex"], ["BibTeX", config.bibtexBin ?? "bibtex"], ["SVG", config.dvisvgmBin], ["PDF", config.dvipdfmxBin]] as const;
   const results = await Promise.all(commands.map(async ([label, binary]) => {
     try {
       const result = await run(binary, ["--version"], process.cwd(), 5_000);

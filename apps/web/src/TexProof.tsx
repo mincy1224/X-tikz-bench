@@ -52,7 +52,7 @@ export function TexProof({ projectId, canvasName, source, onClose }: { projectId
         if (controller.signal.aborted || version.current !== Number(requestVersion)) return;
         setStatus("error");
         const details = error instanceof Error ? error.message : String(error);
-        setMessage(/(?:spawn|ENOENT)/iu.test(details) ? "服务器尚未配置 XeLaTeX 或 dvipdfmx。" : details);
+        setMessage(/(?:spawn|ENOENT)/iu.test(details) ? `服务器未能启动 TeX 工具（${details}）。` : details);
       });
     }, 350);
     return () => { window.clearTimeout(timer); controller.abort(); };

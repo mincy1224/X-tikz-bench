@@ -1,5 +1,4 @@
 import { useEditorStore } from "../store/store";
-import { readSimpleRectangle, rewriteSimpleRectangle } from "tikz-editor/edit/actions";
 import { resolvePropertyTargetFromParseResult } from "tikz-editor/edit/property-target";
 import css from "./App.module.css";
 import { useMatrixEditing } from "./canvas-panel/matrix-editing";
@@ -52,22 +51,5 @@ export function ProjectShapeProperties() {
     </div>;
   }
 
-  const rectangle = readSimpleRectangle(source.slice(target.span.from, target.span.to));
-  if (!rectangle) return null;
-  const rewrite = (change: { width?: number; height?: number; text?: string }) => {
-    const state = useEditorStore.getState();
-    if (state.source !== source) return;
-    state.dispatch({ type: "COMMIT_PROPERTY_SOURCE", expectedSource: source,
-      source: source.slice(0, target.span.from) + rewriteSimpleRectangle(rectangle, change) + source.slice(target.span.to),
-      label: change.text === undefined ? "调整矩形尺寸" : "为矩形添加文字" });
-  };
-  const corner = target.options?.entries.find((entry) => entry.kind === "kv" && entry.key === "rounded corners");
-  const radius = corner?.kind === "kv" && /^\d+(?:\.\d+)?pt$/u.test(corner.valueRaw.trim()) ? Number.parseFloat(corner.valueRaw) : 0;
-  return <div className={css.projectObjectBar} role="group" aria-label="矩形属性">
-    <strong>矩形</strong>
-    {numberInput("宽度", rectangle.width, (width) => { rewrite({ width }); })}
-    {numberInput("高度", rectangle.height, (height) => { rewrite({ height }); })}
-    {numberInput("圆角", radius, (value) => { property(id, "rounded corners", value > 0 ? `${value}pt` : ""); }, 0)}
-    <button type="button" onClick={() => { rewrite({ text: "文字" }); }}>添加居中文字</button>
-  </div>;
+  return null;
 }

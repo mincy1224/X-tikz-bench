@@ -1,18 +1,19 @@
 # X-TikZ Bench
 
-X-TikZ Bench is a self-hosted web editor for TikZ figures. Each project can contain multiple named canvases. Each canvas has its own editable TikZ source, and the project shares an asset library and a palette across canvases.
+X-TikZ Bench is a self-hosted web editor for TikZ figures. Each project can contain multiple named canvases. Each canvas has its own editable TikZ source, and the project shares an asset library, a palette, and a BibTeX library across canvases.
 
 ## Editing and export
 
 - Open a project to draw on the canvas or edit its TikZ source. Press `P` to draw a polyline, Enter or double-click to finish, and Esc to cancel. Drag the scrollbars to pan when the drawing exceeds the viewport.
 - Open **Assets** to import PNG, PDF, or SVG and drag an asset onto the canvas. Each asset can be up to 10 MiB. SVG files are converted to PDF with `rsvg-convert` on Linux or Inkscape on Windows. Set `TIKZ_INKSCAPE_BIN` to specify the Inkscape executable. PDF previews require Poppler.
 - Add and edit shared colors in **Palette**. Click a color name to copy its TikZ alias.
+- Open **Cite** to import and edit one project-wide `.bib` file, choose a BibTeX style, and copy citation commands. Place `\cite{key}` in a canvas text node. The bibliography setup lives in `main.tex`, outside the editable canvas source.
 - Open **TeX Proof** to compile the current canvas with XeLaTeX and view its PDF. The default serif font is Times New Roman when available, with TeX Gyre Termes as a fallback. A font explicitly set by the project takes precedence.
-- Choose **Export LaTeX Project** to download a ZIP containing `main.tex`, `figure.tikz`, and `assets/`. The entry point contains the shared color definitions and loads the current canvas. Unzip the archive and run `xelatex main.tex` to compile it.
+- Choose **Export LaTeX Project** to download a ZIP containing `main.tex`, `figure.tikz`, `assets/`, and `references.bib` when the project has a bibliography. The entry point contains the shared color and bibliography definitions and loads the current canvas. For a cited figure, unzip the archive and run `xelatex -no-pdf main.tex`, `bibtex main`, `xelatex -no-pdf main.tex` twice, then `dvipdfmx main.xdv`.
 
 ## Install or update on Linux and WSL2
 
-Install in the Linux filesystem on Ubuntu, Debian, or a WSL2 distribution with systemd enabled. The source installer requires Linux Node.js 22.13+, npm 10.5+, SQLite, and an existing TeX Live 2026 installation with `latex`, `xelatex`, `dvisvgm`, `dvipdfmx`, and `kpsewhich`.
+Install in the Linux filesystem on Ubuntu, Debian, or a WSL2 distribution with systemd enabled. The source installer requires Linux Node.js 22.13+, npm 10.5+, SQLite, and an existing TeX Live 2026 installation with `latex`, `xelatex`, `bibtex`, `dvisvgm`, `dvipdfmx`, and `kpsewhich`.
 
 From the repository root, install the tools for PDF previews and SVG conversion and run the installer:
 

@@ -413,6 +413,8 @@ export function oppositeCornerWorld(frame: ResizeFrame, role: Extract<DragState,
     role === "top-left" ? "bottom-right" :
     role === "top-right" ? "bottom-left" :
     role === "bottom-left" ? "top-right" :
+    role === "top" || role === "right" ? "bottom-left" :
+    role === "left" ? "top-right" :
     "top-left";
   return frame.cornersByRole[oppositeRole].world;
 }
@@ -460,6 +462,10 @@ export function projectResizeDimensionsFromOppositeCorner(
   const delta = worldVector(pt(pointerWorld.x - fixed.x), pt(pointerWorld.y - fixed.y));
   let width = Math.abs(dotPoint(delta, basis.widthUnit));
   let height = Math.abs(dotPoint(delta, basis.heightUnit));
+  const horizontalEdge = role === "left" || role === "right";
+  const verticalEdge = role === "top" || role === "bottom";
+  if (horizontalEdge) height = basis.height;
+  if (verticalEdge) width = basis.width;
   const aspectRatio =
     preserveAspectRatio && preserveAspectRatio > TOOLTIP_ZERO_EPSILON
       ? preserveAspectRatio
@@ -467,7 +473,7 @@ export function projectResizeDimensionsFromOppositeCorner(
 
   if (preserveAspectDuringResize && aspectRatio) {
     if (width > TOOLTIP_ZERO_EPSILON || height > TOOLTIP_ZERO_EPSILON) {
-      width = Math.max(width, height / aspectRatio);
+      width = verticalEdge ? height / aspectRatio : horizontalEdge ? width : Math.max(width, height / aspectRatio);
       height = width * aspectRatio;
     }
   }

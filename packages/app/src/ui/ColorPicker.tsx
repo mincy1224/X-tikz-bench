@@ -137,11 +137,12 @@ export function ColorPickerField({
       }
 
       const rootRect = root.getBoundingClientRect();
+      const editorTop = document.querySelector('[data-editor-body="true"]')?.getBoundingClientRect().top ?? 0;
       const spaceBelow = window.innerHeight - rootRect.bottom - POPOVER_VIEWPORT_PADDING_PX - POPOVER_GAP_PX;
-      const spaceAbove = rootRect.top - POPOVER_VIEWPORT_PADDING_PX - POPOVER_GAP_PX;
+      const spaceAbove = rootRect.top - Math.max(POPOVER_VIEWPORT_PADDING_PX, editorTop + POPOVER_VIEWPORT_PADDING_PX) - POPOVER_GAP_PX;
       const naturalHeight = popover.scrollHeight;
       const popoverWidth = Math.ceil(popover.getBoundingClientRect().width);
-      const shouldOpenUpward = naturalHeight > spaceBelow && spaceAbove > 0;
+      const shouldOpenUpward = naturalHeight > spaceBelow && spaceAbove > spaceBelow;
       const nextPlacement: PopoverPlacement = shouldOpenUpward ? "up" : "down";
       const wouldOverflowRight =
         rootRect.left + popoverWidth > window.innerWidth - POPOVER_VIEWPORT_PADDING_PX;
@@ -207,6 +208,7 @@ export function ColorPickerField({
       </button>
       {open ? (
         <div
+          data-color-popover="true"
           className={[
             css.popover,
             popoverPlacement === "up" ? css.popoverUp : "",
@@ -669,13 +671,8 @@ export function ColorPicker({
 
   function handleCustomTextInputChange(rawValue: string): void {
     setCustomInputValue(rawValue);
-    const parsed = parseCustomColorInput(rawValue);
-    if (!parsed) {
-      setCustomInputError(CUSTOM_PARSE_ERROR_MESSAGE);
-      setCustomInputWarning(null);
-      return;
-    }
-    applyCustomRgb(parsed.rgb, "drag", parsed.warning ?? null);
+    setCustomInputError(null);
+    setCustomInputWarning(null);
   }
 
   function commitCustomTextInput(): void {
@@ -904,7 +901,6 @@ export function ColorPicker({
               Color Input
             </label>
             <div className={css.customTextInputWrap}>
-              <RenderedTooltip content={customInputError ?? undefined}>
                 <input
                   id={`${customIdPrefix}-custom-text`}
                   className={[css.customTextInput, customInputError ? css.customTextInputError : ""].filter(Boolean).join(" ")}
@@ -916,6 +912,7 @@ export function ColorPicker({
                   autoCorrect="off"
                   disabled={disabled}
                   aria-invalid={customInputError ? "true" : "false"}
+                  aria-describedby={customInputError ? `${customIdPrefix}-custom-error` : undefined}
                   onChange={(event) => { handleCustomTextInputChange(event.currentTarget.value); }}
                   onBlur={() => { commitCustomTextInput(); }}
                   onKeyDown={(event) => {
@@ -926,13 +923,13 @@ export function ColorPicker({
                     commitCustomTextInput();
                   }}
                 />
-              </RenderedTooltip>
               {customInputError ? (
                 <span className={css.customTextInputStatus} aria-hidden="true">
                   !
                 </span>
               ) : null}
             </div>
+            {customInputError && <small id={`${customIdPrefix}-custom-error`} role="alert">{customInputError}</small>}
           </div>
 
           <div className={css.customField}>

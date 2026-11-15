@@ -12,7 +12,7 @@ import {
 // the CodeMirror buffer. Invariant under test: after every sync, the buffer
 // equals the store source — patches are applied only when replaying them on
 // the actual buffer content reproduces the target source; otherwise the sync
-// falls back to a full-document replace.
+// falls back to a verified minimal document change.
 //
 // Regression context: the manager used to authorize the patch fast path from
 // revision bookkeeping alone, and ASSUMED the buffer sat at the patch base
@@ -89,7 +89,7 @@ describe("SourcePanel external source sync", () => {
     view.destroy();
   });
 
-  it("falls back to a full replace when a keystroke landed before the flush", () => {
+  it("converges safely when a keystroke landed before the flush", () => {
     const { view, sync } = makeView(S0);
 
     // A keystroke lands in the editor during the coalescing window: the user
@@ -100,12 +100,12 @@ describe("SourcePanel external source sync", () => {
     sync.syncExternalSource(S1, 8, PATCHES, null, true);
 
     // The sync must converge the buffer to the store source. Dropping the
-    // unsynced keystroke via full replace is the accepted degraded mode.
+    // unsynced keystroke is the accepted degraded mode.
     expect(view.state.doc.toString()).toBe(S1);
     view.destroy();
   });
 
-  it("falls back to a full replace when the buffer diverged before a chain flush", () => {
+  it("converges safely when the buffer diverged before a chain flush", () => {
     const { view, sync } = makeView(S0);
     view.dispatch({ changes: { from: 0, insert: "%" } });
     sync.syncExternalSource(S2, 9, CHAIN[1].patches, CHAIN, true);
@@ -117,7 +117,7 @@ describe("SourcePanel external source sync", () => {
     // Revision numbers are per-document counters. Simulate a document switch
     // where the new document's pending patches carry revision numbers that
     // happen to line up with the manager's bookkeeping from the old document:
-    // content verification must reject them and replace the whole buffer.
+    // content verification must reject them and converge the buffer.
     const { view, sync } = makeView(S0);
     sync.syncExternalSource(S1, 8, PATCHES, null, true);
 
@@ -135,6 +135,19 @@ describe("SourcePanel external source sync", () => {
     ];
     sync.syncExternalSource(OTHER_DOC, 9, otherPatches, null, true);
     expect(view.state.doc.toString()).toBe(OTHER_DOC);
+    view.destroy();
+  });
+
+  it("keeps source selection near its statement after undo removes an earlier group", () => {
+    const before = "\\begin{tikzpicture}\n  \\draw (0,0) -- (1,1);\n  \\draw (2,2) -- (3,3);\n\\end{tikzpicture}";
+    const grouped = before.replace("  \\draw (0,0)", "  \\begin{scope}\n    \\draw (0,0)")
+      .replace("\n\\end{tikzpicture}", "\n  \\end{scope}\n\\end{tikzpicture}");
+    const { view, sync } = makeView(grouped);
+    const selected = grouped.indexOf("\\draw (2,2)");
+    view.dispatch({ selection: { anchor: selected, head: selected + "\\draw (2,2)".length } });
+    sync.syncExternalSource(before, 12, null, null, false);
+    expect(view.state.doc.toString()).toBe(before);
+    expect(view.state.doc.sliceString(view.state.selection.main.from, view.state.selection.main.to)).toContain("\\draw (2,2)");
     view.destroy();
   });
 });

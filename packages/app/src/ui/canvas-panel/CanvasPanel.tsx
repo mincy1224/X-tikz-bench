@@ -901,7 +901,7 @@ export const CanvasPanel = memo(function CanvasPanel({
     if (!baseSvgResult) return;
     setDragPageViewBox((current) => {
       const previous = current ?? baseSvgResult.viewBox;
-      const expanded = expandCanvasPage(previous, bounds, 36, 24);
+      const expanded = expandCanvasPage(previous, bounds, 36, 24, baseSvgResult.viewBox);
       return expanded === previous ? current : expanded;
     });
   }, [baseSvgResult]);
@@ -909,13 +909,20 @@ export const CanvasPanel = memo(function CanvasPanel({
     if (projectId === null || !snapshot.parseResult) return false;
     return resolveFigureBoundsState(snapshot.source, { activeFigureId }).mode === "fixed";
   }, [projectId, snapshot.parseResult, snapshot.source, activeFigureId]);
-  const pageSvgResult = useMemo(() => {
+  const paperViewBox = useMemo(() => {
     if (!baseSvgResult || fixedProjectPage || projectId === null ||
-      (!activeCanvasDragKind && snapshot.source === source)) return baseSvgResult;
+      (!activeCanvasDragKind && snapshot.source === source)) return baseSvgResult?.viewBox;
     let viewBox = dragPageViewBox ?? baseSvgResult.viewBox;
-    if (snapshot.scene?.bounds) viewBox = expandCanvasPage(viewBox, snapshot.scene.bounds, 36, 24);
-    return viewBox === baseSvgResult.viewBox ? baseSvgResult : { ...baseSvgResult, viewBox };
+    if (snapshot.scene?.bounds) viewBox = expandCanvasPage(viewBox, snapshot.scene.bounds, 36, 24, baseSvgResult.viewBox);
+    return viewBox;
   }, [activeCanvasDragKind, baseSvgResult, dragPageViewBox, fixedProjectPage, projectId, snapshot.scene, snapshot.source, source]);
+  const pageSvgResult = useMemo(() => {
+    if (!baseSvgResult || !paperViewBox || paperViewBox === baseSvgResult.viewBox) return baseSvgResult;
+    // Retain the SVG coordinate origin while the visible paper grows per edge.
+    const base = baseSvgResult.viewBox;
+    const vertical = Math.max(base.y - paperViewBox.y, paperViewBox.y + paperViewBox.height - base.y - base.height);
+    return { ...baseSvgResult, viewBox: { ...paperViewBox, y: base.y - vertical, height: base.height + 2 * vertical } };
+  }, [baseSvgResult, paperViewBox]);
   const svgResult = useMemo(() => {
     if (!pageSvgResult || showDocumentBounds) {
       return pageSvgResult;
@@ -3996,6 +4003,7 @@ export const CanvasPanel = memo(function CanvasPanel({
         assistantLockReason={assistantLockReason}
         snapshot={snapshot}
         svgModel={svgModel}
+        paperViewBox={showDocumentBounds && paperViewBox !== svgResult?.viewBox ? paperViewBox : undefined}
         svgLayerHostRef={svgLayerHostRef}
         canvasTransform={canvasTransform}
         onCanvasScroll={(transform) => {

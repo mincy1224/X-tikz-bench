@@ -34,6 +34,7 @@ Bind to `127.0.0.1` for local use, including access from Windows via WSL2 localh
 
 ```bash
 xelatex --version
+bibtex --version
 dvipdfmx --version
 curl -fsS http://127.0.0.1:5175/api/latex/status
 ```
@@ -41,6 +42,7 @@ curl -fsS http://127.0.0.1:5175/api/latex/status
 ```text
 TIKZ_LATEX_BIN=latex
 TIKZ_XELATEX_BIN=xelatex
+TIKZ_BIBTEX_BIN=bibtex
 TIKZ_DVISVGM_BIN=dvisvgm
 TIKZ_DVIPDFMX_BIN=dvipdfmx
 TIKZ_LATEX_TIMEOUT_MS=20000
@@ -48,4 +50,4 @@ TIKZ_LATEX_MAX_SOURCE_BYTES=1048576
 TIKZ_LATEX_MAX_CONCURRENCY=2
 ```
 
-TeX Proof displays the current canvas as a XeLaTeX PDF. The separate SVG compilation path uses dvisvgm with embedded bitmaps. Each compilation runs in a temporary directory with the referenced assets, restricted TeX file access, and shell escape disabled.
+TeX Proof displays the current canvas as a XeLaTeX PDF. Projects with citations run XeLaTeX, BibTeX, and two more XeLaTeX passes. The project bibliography is stored in the database, staged as `references.bib` for compilation, and included in exported ZIP files. The separate SVG compilation path uses dvisvgm with embedded bitmaps. Each compilation runs in a temporary directory with the referenced assets, restricted TeX file access, and shell escape disabled.

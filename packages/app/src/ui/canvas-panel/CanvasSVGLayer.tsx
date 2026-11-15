@@ -12,10 +12,11 @@ export function CanvasSVGLayer(params: {
   forceReplaceAll: boolean;
   showTransparencyGrid: boolean;
   showDocumentBounds: boolean;
+  transparentPaper?: boolean;
   onFallback: (reason: "replaceDefs" | "replaceAll" | "patch-failure") => void;
   hostRef?: RefObject<HTMLDivElement | null>;
 }) {
-  const { model, diffHints, forceReplaceAll, showTransparencyGrid, showDocumentBounds, onFallback, hostRef: externalHostRef } = params;
+  const { model, diffHints, forceReplaceAll, showTransparencyGrid, showDocumentBounds, transparentPaper, onFallback, hostRef: externalHostRef } = params;
   const internalHostRef = useRef<HTMLDivElement | null>(null);
   const patcherRef = useRef<SvgDomPatcher | null>(null);
   const previousModelRef = useRef<SvgRenderModel | null>(null);
@@ -90,7 +91,8 @@ export function CanvasSVGLayer(params: {
   const className = [
     css.svgLayer,
     showDocumentBounds ? "" : css.svgLayerNoDocumentBounds,
-    showTransparencyGrid ? css.svgLayerTransparencyGrid : ""
+    showTransparencyGrid ? css.svgLayerTransparencyGrid : "",
+    transparentPaper ? css.svgLayerTransparentPaper : ""
   ].filter(Boolean).join(" ");
   return (
     <div

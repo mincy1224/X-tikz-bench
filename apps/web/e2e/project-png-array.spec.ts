@@ -95,6 +95,31 @@ test("a project ZIP merges legacy image placements into the editable TikZ body",
   expect(strFromU8(archive["figure.tikz"]).trim()).toBe(source.trim());
 });
 
+test("a project bibliography is managed outside canvas code and survives ZIP import", async ({ page, request }) => {
+  await gotoApp(page);
+  const projectId = new URL(page.url()).pathname.split("/").at(-1)!;
+  await setSource(page, String.raw`\node at (0,0) {See \cite{knuth1984}};`);
+  await page.getByRole("button", { name: "Cite", exact: true }).click();
+  await page.getByLabel("选择 BibTeX 文件").setInputFiles({
+    name: "reading.bib", mimeType: "text/plain", buffer: Buffer.from("@book{knuth1984,title={The TeXbook},author={Donald Knuth},year={1984}}\n")
+  });
+  await expect(page.getByRole("button", { name: "knuth1984" })).toBeVisible();
+  await page.getByLabel("BibTeX 引用样式").selectOption("alpha");
+  await page.getByRole("button", { name: "保存更改" }).click();
+  await expect.poll(async () => (await (await request.get(`/api/projects/${projectId}`)).json()).project.bibliography.style).toBe("alpha");
+  expect(await readSource(page)).not.toContain("bibliographystyle");
+  const archive = unzipSync(await (await request.post(`/api/projects/${projectId}/export/tex`, { data: { source: await readSource(page) } })).body());
+  expect(strFromU8(archive["main.tex"])).toContain("\\bibliographystyle{alpha}");
+  expect(strFromU8(archive["main.tex"])).toContain("\\bibliography{references}");
+  expect(strFromU8(archive["references.bib"])).toContain("knuth1984");
+  expect(strFromU8(archive["figure.tikz"])).toContain("\\cite{knuth1984}");
+  const imported = await request.post(`/api/projects/import?name=Bibliography%20roundtrip%20${Date.now()}`, {
+    headers: { "content-type": "application/zip" }, data: Buffer.from(zipSync(archive))
+  });
+  expect(imported.status()).toBe(201);
+  expect((await imported.json()).project.bibliography).toMatchObject({ name: "references.bib", style: "alpha" });
+});
+
 test("copy, cut and paste work from the canvas with keyboard shortcuts", async ({ page }) => {
   await gotoApp(page);
   await setSource(page, String.raw`\draw (0,0) rectangle (2,1);`);
@@ -109,6 +134,25 @@ test("copy, cut and paste work from the canvas with keyboard shortcuts", async (
   await expect.poll(async () => (await readSource(page)).match(/\\draw/g)?.length).toBe(1);
   await page.keyboard.press("ControlOrMeta+v");
   await expect.poll(async () => (await readSource(page)).match(/\\draw/g)?.length).toBe(2);
+});
+
+test("Ctrl+G groups the selection and one undo restores source positions", async ({ page }) => {
+  await gotoApp(page);
+  const original = String.raw`\draw (0,0) rectangle (2,1);
+\draw (3,0) rectangle (5,1);`;
+  await setSource(page, original);
+  await waitForHitRegions(page, 2);
+  await focusCanvas(page);
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.getByRole("button", { name: "TeX 校样" }).focus();
+  await page.keyboard.press("ControlOrMeta+g");
+  await expect.poll(() => readSource(page)).toContain("\\begin{scope}");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => readSource(page)).toBe(original);
+  await expect.poll(() => page.evaluate(() => (globalThis as unknown as { __TIKZ_EDITOR_APP_TEST_API__?: { getSnapshotSource?: () => string } }).__TIKZ_EDITOR_APP_TEST_API__?.getSnapshotSource?.())).toBe(original);
+  await page.keyboard.press("ControlOrMeta+g");
+  await expect.poll(() => readSource(page)).toContain("\\begin{scope}");
+  expect((await readSource(page)).match(/\\draw/g)).toHaveLength(2);
 });
 
 test("blank row vector cells accept text and move through the row with Tab", async ({ page }) => {
@@ -341,13 +385,27 @@ test("rectangle resize previews the edge before writing the source on release", 
   await setSource(page, source);
   await waitForHitRegions(page);
   await selectFirstCanvasElement(page);
-  const corner = page.locator('[data-resize-role="top-right"]').first();
-  const box = (await corner.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const edge = page.locator('[data-resize-role="top"]').first();
+  const box = (await edge.boundingBox())!;
+  const selection = page.locator("[data-selection-overlay-box-source-id]").first();
+  const original = (await selection.boundingBox())!;
+  const stage = page.getByTestId("canvas-world-stage");
+  const originalPaper = (await stage.boundingBox())!;
+  const pointerX = box.x + box.width / 2;
+  const pointerY = box.y + box.height / 2 - 55;
+  await page.mouse.move(pointerX, box.y + box.height / 2);
   await page.mouse.down();
   try {
-    await page.mouse.move(box.x + box.width / 2 + 45, box.y + box.height / 2 - 18, { steps: 6 });
-    await expect(page.locator("[data-resize-preview]")).toHaveAttribute("points", /[\d, ]+/u);
+    await expect.poll(() => page.evaluate(() => (globalThis as unknown as { __TIKZ_EDITOR_APP_TEST_API__?: { getActiveCanvasDragKind?: () => string | null } }).__TIKZ_EDITOR_APP_TEST_API__?.getActiveCanvasDragKind?.())).toBe("resize");
+    await page.mouse.move(pointerX, pointerY, { steps: 6 });
+    const preview = page.locator("[data-resize-preview]");
+    await expect(preview).toHaveAttribute("points", /[\d, ]+/u);
+    const outline = (await preview.boundingBox())!;
+    expect(Math.abs(outline.y - pointerY)).toBeLessThan(5);
+    expect(Math.abs(outline.y + outline.height - original.y - original.height)).toBeLessThan(5);
+    const paper = (await page.getByTestId("canvas-paper-preview").boundingBox())!;
+    expect(paper.y).toBeLessThan(originalPaper.y - 20);
+    expect(Math.abs(paper.y + paper.height - originalPaper.y - originalPaper.height)).toBeLessThan(5);
     expect(await readSource(page)).toBe(source);
   } finally {
     await page.mouse.up();
@@ -380,13 +438,32 @@ test("the dashboard searches projects and restores them from trash", async ({ pa
   await expect(link).toBeVisible();
 });
 
+test("typing a full hex color keeps keyboard focus and commits only on Enter", async ({ page }) => {
+  await gotoApp(page);
+  const source = String.raw`\fill[blue] (0,0) rectangle (2,2);`;
+  await setSource(page, source);
+  await waitForHitRegions(page);
+  await selectFirstCanvasElement(page);
+  await page.getByRole("button", { name: "填充颜色", exact: true }).click();
+  await page.getByRole("tab", { name: "Custom", exact: true }).click();
+  const input = page.getByLabel("Color Input", { exact: true });
+  await input.fill("");
+  for (const digit of "#123456") {
+    await page.keyboard.type(digit);
+    await expect(input).toBeFocused();
+  }
+  await expect(input).toHaveValue("#123456");
+  expect(await readSource(page)).toBe(source);
+  await input.press("Enter");
+  await expect.poll(() => readSource(page)).not.toBe(source);
+});
+
 test("simple rectangle keeps style and size when adding a centered label", async ({ page }) => {
   await gotoApp(page);
   await setSource(page, String.raw`\begin{tikzpicture}\filldraw[fill=blue!20,draw=blue] (0,0) rectangle (3,2);\end{tikzpicture}`);
   await page.locator('[data-testid="canvas-svg-layer"] path[data-source-id]').first().click({ force: true });
-  const bar = page.getByRole("group", { name: "矩形属性" });
-  await expect(bar).toBeVisible();
-  await bar.getByRole("button", { name: "添加居中文字" }).click();
+  await expect(page.getByRole("group", { name: "矩形属性" })).toHaveCount(0);
+  await page.getByRole("button", { name: "添加居中文字" }).click();
   await expect.poll(() => readSource(page)).toMatch(/\\node\[.*fill=blue!20.*minimum width=.*\] at .*\{文字\}/u);
   await expect(page.getByTestId("canvas-svg-layer").getByText("文字")).toBeVisible();
 });

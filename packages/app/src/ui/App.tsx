@@ -34,6 +34,7 @@ import { ProjectCompilationContext, ProjectIdContext } from "./project-png-image
 import { ProjectPngProperties } from "./ProjectPngProperties";
 import { ProjectShapeProperties } from "./ProjectShapeProperties";
 import { ProjectPalette } from "./ProjectPalette";
+import { ProjectBibliography, type ProjectBibliographyData } from "./ProjectBibliography";
 import { ProjectBrand } from "./ProjectBrand";
 import { projectPaletteColors } from "tikz-editor/tex/project-source";
 import { ProjectAssetPanel, PROJECT_ASSET_DRAG_TYPE, type ProjectAsset } from "./ProjectAssetPanel";
@@ -246,6 +247,8 @@ export type AppProps = {
   project?: {
     palette: string;
     onPaletteChange: (palette: string) => Promise<void>;
+    bibliography: ProjectBibliographyData | null;
+    onBibliographyChange: (bibliography: ProjectBibliographyData | null) => Promise<void>;
     id: string;
     name: string;
     source: string;
@@ -266,6 +269,7 @@ function identitySource(source: string): string { return source; }
 
 export function App({ project, canvasNavigation }: AppProps = {}) {
   const [showProjectPalette, setShowProjectPalette] = useState(false);
+  const [showBibliography, setShowBibliography] = useState(false);
   const preferNativeSerif = project !== undefined;
   const palette = project?.palette ?? "";
   const projectColors = useMemo(() => projectPaletteColors(palette), [palette]);
@@ -1859,20 +1863,18 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
         }
 
         if (!e.shiftKey && key === "g") {
-          if (!canvasShortcutContext) {
+          if (!canvasShortcutContext && useEditorStore.getState().selectedElementIds.size < 2) {
             return;
           }
-          runtime.runCommand(APP_MENU_COMMAND_IDS.GROUP, "shortcut");
-          e.preventDefault();
+          if (runtime.runCommand(APP_MENU_COMMAND_IDS.GROUP, "shortcut")) e.preventDefault();
           return;
         }
 
         if (e.shiftKey && key === "g") {
-          if (!canvasShortcutContext) {
+          if (!canvasShortcutContext && useEditorStore.getState().selectedElementIds.size === 0) {
             return;
           }
-          runtime.runCommand(APP_MENU_COMMAND_IDS.UNGROUP, "shortcut");
-          e.preventDefault();
+          if (runtime.runCommand(APP_MENU_COMMAND_IDS.UNGROUP, "shortcut")) e.preventDefault();
           return;
         }
       }
@@ -2127,6 +2129,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
           </button>
           <button type="button" className={css.projectProof} onClick={project.onShowTexProof}>TeX 校样</button>
           <button type="button" className={css.projectExport} aria-expanded={showProjectPalette} onClick={() => { setShowProjectPalette(!showProjectPalette); }}>配色盘</button>
+          <button type="button" className={css.projectExport} aria-expanded={showBibliography} onClick={() => { setShowBibliography(!showBibliography); }}>Cite</button>
           <button type="button" className={css.projectExport} aria-expanded={showAssets} aria-controls={showAssets ? "project-assets" : undefined} onClick={() => { setShowAssets(!showAssets); }}>素材</button>
           <input hidden ref={pngInput} type="file" multiple accept="image/png,image/svg+xml,application/pdf,.png,.svg,.pdf" aria-label="选择素材" onChange={(event) => {
             const files = Array.from(event.currentTarget.files ?? []);
@@ -2148,6 +2151,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       {assetStatus ? <div className={css.compileNotice} role="status">{assetStatus}</div> : null}
       {project ? <><ProjectPngProperties /><ProjectShapeProperties /></> : null}
       {project && showProjectPalette ? <ProjectPalette palette={palette} onChange={project.onPaletteChange} /> : null}
+      {project && showBibliography ? <ProjectBibliography bibliography={project.bibliography} onChange={project.onBibliographyChange} /> : null}
       {platform.menu?.usesNativeMenuBar ? null : (
         <AppMenuBar
           definition={menuDefinition}
@@ -2178,7 +2182,7 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
           requestCloseIntent({ kind: "close-document", documentId });
         }}
       />}
-      <div className={css.body}>
+      <div className={css.body} data-editor-body="true">
         <DockLayout repeatPreviewModel={repeatPreviewModel} />
       </div>
       <StatusBar projectMode={project !== undefined} />

@@ -3,7 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError } from "./latex/compiler.js";
-import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, softDeleteProject, storeProjectPng, updateProject } from "./projects/store.js";
+import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectBibliography, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, saveProjectBibliography, softDeleteProject, storeProjectPng, updateProject, type ProjectBibliography } from "./projects/store.js";
 import { MAX_PNG_BYTES, referencedPngKeys } from "./projects/png.js";
 import { PROJECT_PALETTE_BLOCK, splitProjectSource } from "../../../packages/core/src/tex/project-source.js";
 import { importProjectArchive } from "./projects/import-archive.js";
@@ -87,9 +87,10 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
         json(response, 415, { error: "请选择 LaTeX 工程 ZIP。" });
         return;
       }
-      const { source, assets } = await importProjectArchive(await binaryBody(request, 50 * 1024 * 1024), config.maxSourceBytes);
+      const { source, assets, bibliography } = await importProjectArchive(await binaryBody(request, 50 * 1024 * 1024), config.maxSourceBytes);
       const project = await createProject(config, url.searchParams.get("name") ?? "", source, url.searchParams.get("description") ?? "", undefined, assets);
-      json(response, 201, { project });
+      if (bibliography) await saveProjectBibliography(config, project.id, bibliography);
+      json(response, 201, { project: bibliography ? await getProjectCanvas(config, project.id) : project });
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/projects") {
@@ -129,6 +130,22 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       return;
     }
     const projectMatch = /^\/api\/projects\/([0-9a-f-]+)$/iu.exec(url.pathname);
+    const bibliographyMatch = /^\/api\/projects\/([0-9a-f-]+)\/bibliography$/iu.exec(url.pathname);
+    if (bibliographyMatch && (request.method === "PUT" || request.method === "DELETE")) {
+      let bibliography: ProjectBibliography | null = null;
+      if (request.method === "PUT") {
+        const payload = JSON.parse(await body(request, config.maxSourceBytes + 4096)) as Partial<ProjectBibliography>;
+        if (typeof payload.name !== "string" || !/^[^\\/\r\n]{1,120}\.bib$/iu.test(payload.name) ||
+          typeof payload.source !== "string" || Buffer.byteLength(payload.source, "utf8") > config.maxSourceBytes ||
+          !["plain", "unsrt", "alpha", "abbrv"].includes(payload.style ?? "")) {
+          json(response, 400, { error: "请选择有效的 .bib 文件和参考文献样式。" }); return;
+        }
+        bibliography = { name: payload.name, source: payload.source, style: payload.style! };
+      }
+      const saved = await saveProjectBibliography(config, bibliographyMatch[1], bibliography);
+      json(response, saved === undefined ? 404 : 200, saved === undefined ? { error: "Project not found." } : { bibliography: saved });
+      return;
+    }
     const restoreMatch = /^\/api\/projects\/([0-9a-f-]+)\/restore$/iu.exec(url.pathname);
     if (restoreMatch && request.method === "POST") {
       const restored = await restoreProject(config, restoreMatch[1]);
@@ -190,7 +207,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
           for (const key of referencedPngKeys(exportSource)) {
             if (!pngs.has(`assets/${key}`)) throw new Error(`缺少图片文件：assets/${key}`);
           }
-          const tex = createStandaloneDocument(exportSource, "xelatex", true);
+          const bibliography = await getProjectBibliography(config, project.id);
+          const tex = createStandaloneDocument(exportSource, "xelatex", true, bibliography);
           const picture = splitProjectSource(tex);
           const entries: Zippable = picture ? {
             "main.tex": strToU8(`${picture.prefix}\n\\input{figure.tikz}\n${picture.suffix}`),
@@ -198,6 +216,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
             "assets/": new Uint8Array()
           } : { "main.tex": strToU8(tex), "assets/": new Uint8Array() };
           for (const [name, bytes] of pngs) entries[name] = new Uint8Array(bytes);
+          if (bibliography) entries["references.bib"] = strToU8(bibliography.source);
           attachment(response, "application/zip", `${project.name}.zip`, Buffer.from(zipSync(entries, { level: 0 })));
         } catch (error) {
           json(response, 422, { error: error instanceof Error ? error.message : String(error) });
@@ -208,11 +227,12 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       activeCompiles += 1;
       try {
         const pngs = await getReferencedProjectPngs(config, project.id, exportSource);
+        const bibliography = await getProjectBibliography(config, project.id);
         if (exportMatch[2] === "svg") {
-          const result = await compileLatex(exportSource, config, "xelatex", pngs, true);
+          const result = await compileLatex(exportSource, config, "xelatex", pngs, true, bibliography);
           attachment(response, "image/svg+xml; charset=utf-8", `${project.name}.svg`, result.svg);
         } else {
-          const result = await compileLatexPdf(exportSource, config, "xelatex", pngs, true);
+          const result = await compileLatexPdf(exportSource, config, "xelatex", pngs, true, bibliography);
           attachment(response, "application/pdf", `${project.name}.pdf`, result.pdf);
         }
       } catch (error) {
@@ -262,13 +282,14 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       activeCompiles += 1;
       try {
         const pngs = await getReferencedProjectPngs(config, typeof payload.projectId === "string" ? payload.projectId : undefined, payload.source);
+        const bibliography = typeof payload.projectId === "string" ? await getProjectBibliography(config, payload.projectId) : null;
         if (payload.proof === true) {
-          const result = await compileLatexPdf(payload.source, config, "xelatex", pngs, true);
+          const result = await compileLatexPdf(payload.source, config, "xelatex", pngs, true, bibliography);
           response.writeHead(200, { ...securityHeaders, "content-type": "application/pdf", "content-length": result.pdf.length, "cache-control": "no-store" });
           response.end(result.pdf);
           return;
         }
-        const result = await compileLatex(payload.source, config, payload.engine, pngs, typeof payload.projectId === "string");
+        const result = await compileLatex(payload.source, config, payload.engine, pngs, typeof payload.projectId === "string", bibliography);
         json(response, 200, { ok: true, ...result, sourceVersion: typeof payload.sourceVersion === "string" ? payload.sourceVersion : undefined });
       }
       catch (error) {

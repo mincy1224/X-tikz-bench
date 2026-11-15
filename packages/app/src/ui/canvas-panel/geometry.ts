@@ -29,16 +29,16 @@ export function canvasPanRange(viewportSize: number, pageSize: number): { min: n
   return { min: center - margin, max: center + margin };
 }
 
-export function expandCanvasPage(viewBox: SvgViewBox, bounds: WorldBounds, padding: number, step = 1): SvgViewBox {
-  const svg = worldToSvgBounds(bounds, viewBox);
+export function expandCanvasPage(viewBox: SvgViewBox, bounds: WorldBounds, padding: number, step = 1, coordinateBox = viewBox): SvgViewBox {
+  const svg = worldToSvgBounds(bounds, coordinateBox);
   const roundGrowth = (size: number) => Math.max(0, Math.ceil((size - 1e-6) / step) * step);
   const left = roundGrowth(viewBox.x - svg.minX + padding);
   const right = roundGrowth(svg.maxX + padding - viewBox.x - viewBox.width);
-  // Symmetric growth keeps the world-to-SVG Y origin and existing SVG paths stable.
-  const vertical = roundGrowth(Math.max(viewBox.y - svg.minY + padding, svg.maxY + padding - viewBox.y - viewBox.height));
-  if (left === 0 && right === 0 && vertical === 0) return viewBox;
-  return { x: viewBox.x - left, y: viewBox.y - vertical,
-    width: viewBox.width + left + right, height: viewBox.height + 2 * vertical };
+  const top = roundGrowth(viewBox.y - svg.minY + padding);
+  const bottom = roundGrowth(svg.maxY + padding - viewBox.y - viewBox.height);
+  if (left === 0 && right === 0 && top === 0 && bottom === 0) return viewBox;
+  return { x: viewBox.x - left, y: viewBox.y - top,
+    width: viewBox.width + left + right, height: viewBox.height + top + bottom };
 }
 
 export type VisibleRanges = {

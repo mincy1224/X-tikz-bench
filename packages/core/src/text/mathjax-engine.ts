@@ -1890,6 +1890,10 @@ function normalizeMathJaxTextInput(
     });
   }
   resolvedText = resolvedText.replace(EXPLICIT_LINE_BREAK_CANONICAL_PATTERN, "$1");
+  // BibTeX resolves citation labels during the XeLaTeX proof pass. Keep the
+  // interactive text visible while the project bibliography is not available
+  // to MathJax's local text renderer.
+  resolvedText = resolvedText.replace(/\\cite(?:\[[^\]]*\])?\{([^{}]+)\}/gu, (_match, keys: string) => `[${keys}]`);
   resolvedText = resolvedText.replace(/\r\n?/g, "\n").replace(/\n/g, " ");
 
   return {

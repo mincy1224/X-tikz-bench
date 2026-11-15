@@ -118,6 +118,12 @@ CREATE TABLE IF NOT EXISTS project_shared_palette (
   project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
   source TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_bibliography (
+  project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  source TEXT NOT NULL,
+  style TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS project_main_canvas_names (
   project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
   name TEXT NOT NULL
@@ -167,13 +173,36 @@ export async function getProjectCanvas(config: ServerConfig, id: string, canvasI
   const paletteOutput = await runSql(config, `SELECT source FROM project_shared_palette WHERE project_id=${quote(id)};`, true);
   const paletteRow = (JSON.parse(paletteOutput.trim() || "[]") as { source: string }[])[0];
   const palette = paletteRow?.source ?? PROJECT_PALETTE_BLOCK.exec(project.source)?.[0] ?? "";
+  const bibliography = await getProjectBibliography(config, id);
   return {
     ...project,
     canvasId,
     canvases,
     source: withoutProjectPalette(selected?.source ?? project.source),
     palette,
+    bibliography,
   };
+}
+
+export type ProjectBibliography = { name: string; source: string; style: string };
+
+export async function getProjectBibliography(config: ServerConfig, id: string): Promise<ProjectBibliography | null> {
+  const output = await runSql(config, `SELECT name,source,style FROM project_bibliography WHERE project_id=${quote(id)};`, true);
+  return (JSON.parse(output.trim() || "[]") as ProjectBibliography[])[0] ?? null;
+}
+
+export function saveProjectBibliography(config: ServerConfig, id: string, bibliography: ProjectBibliography | null): Promise<ProjectBibliography | null | undefined> {
+  return serializeWrite(async () => {
+    const project = await getProject(config, id);
+    if (!project || project.deletedAt) return;
+    const now = new Date().toISOString();
+    await checkedWrite(config, bibliography
+      ? `INSERT INTO project_bibliography(project_id,name,source,style) VALUES(${quote(id)},${quote(bibliography.name)},${quote(bibliography.source)},${quote(bibliography.style)}) ON CONFLICT(project_id) DO UPDATE SET name=excluded.name,source=excluded.source,style=excluded.style;
+        UPDATE projects SET updated_at=${quote(now)} WHERE id=${quote(id)};`
+      : `DELETE FROM project_bibliography WHERE project_id=${quote(id)};
+        UPDATE projects SET updated_at=${quote(now)} WHERE id=${quote(id)};`);
+    return bibliography;
+  });
 }
 
 export function createProjectCanvas(config: ServerConfig, projectId: string, value: string): Promise<Canvas | null> {
@@ -242,7 +271,8 @@ export function createProject(config: ServerConfig, name: string, source = DEFAU
     await checkedWrite(config, `INSERT INTO projects(id,name,description,source,revision,created_at,updated_at) VALUES(${quote(id)},${quote(name)},${quote(description)},${quote(withoutProjectPalette(source))},1,${quote(now)},${quote(now)});
       ${palette ? `INSERT INTO project_shared_palette(project_id,source) VALUES(${quote(id)},${quote(palette)});` : ""}
       ${copyFrom ? `INSERT INTO project_pngs(project_id,key,data) SELECT ${quote(id)},key,data FROM project_pngs WHERE project_id=${quote(copyFrom)};
-        INSERT INTO project_asset_details(project_id,key,name,width,height,preview) SELECT ${quote(id)},key,name,width,height,preview FROM project_asset_details WHERE project_id=${quote(copyFrom)};` : ""}
+        INSERT INTO project_asset_details(project_id,key,name,width,height,preview) SELECT ${quote(id)},key,name,width,height,preview FROM project_asset_details WHERE project_id=${quote(copyFrom)};
+        INSERT INTO project_bibliography(project_id,name,source,style) SELECT ${quote(id)},name,source,style FROM project_bibliography WHERE project_id=${quote(copyFrom)};` : ""}
       ${assets.map((asset) => insertAssetSql(id, asset)).join("\n")}`);
     return (await getProjectCanvas(config, id))!;
   });

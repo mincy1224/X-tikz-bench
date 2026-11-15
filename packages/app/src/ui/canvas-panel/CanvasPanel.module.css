@@ -244,6 +244,19 @@
   background-color: #e8e8e8;
 }
 
+.svgLayerTransparentPaper, :global([data-canvas-invert]) .svgLayerTransparentPaper {
+  background: transparent;
+  box-shadow: none;
+}
+
+.paperPreview {
+  filter: none;
+}
+
+.interactionLayer:has([data-resize-preview][points]) [data-element-drag-overlay] {
+  visibility: hidden;
+}
+
 :global([data-color-scheme="dark"]) .viewport {
   background-image: none;
 }
@@ -663,7 +676,7 @@
 }
 
 .rotateHandleStem {
-  pointer-events: all;
+  pointer-events: none;
   fill: none;
   stroke: var(--accent-dark);
   vector-effect: non-scaling-stroke;

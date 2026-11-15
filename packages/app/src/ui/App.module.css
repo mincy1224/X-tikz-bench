@@ -22,6 +22,7 @@
   min-height: 0;
   position: relative;
 }
+.body:has([data-color-popover="true"]) { z-index: 1; }
 .compileNotice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; background: color-mix(in srgb, var(--accent) 10%, var(--bg-pane)); border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 12px; }
 .compileNotice span { flex: 1; min-width: 200px; }
 .compileNotice button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-pane); color: var(--text); cursor: pointer; }
@@ -42,6 +43,15 @@
 .projectObjectBar input { width: 66px; }
 .projectObjectBar input, .projectObjectBar button { color: var(--text); background: var(--bg-pane); border: 1px solid var(--border); border-radius: 4px; padding: 3px; }
 .projectPalette { background: var(--bg-pane); padding: 12px 18px; display: grid; gap: 10px; max-height: 210px; overflow: auto; border-bottom: 1px solid var(--border); }
+.projectBibliography { background: var(--bg-pane); padding: 14px 18px; display: grid; gap: 10px; max-height: 340px; overflow: auto; border-bottom: 1px solid var(--border); color: var(--text); }
+.bibliographyHeading, .bibliographyControls, .bibliographyKeys { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bibliographyHeading > div { display: grid; gap: 3px; margin-right: auto; }
+.bibliographyHeading > div span, .bibliographyControls > span:last-child { color: var(--text-muted); font-size: 12px; }
+.bibliographyControls label { display: flex; align-items: center; gap: 7px; }
+.bibliographyControls select { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-pane); color: var(--text); padding: 5px 8px; }
+.projectBibliography textarea { width: 100%; min-height: 92px; resize: vertical; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-pane); color: var(--text); font: 12px/1.5 monospace; padding: 10px; }
+.projectBibliography [role="alert"] { color: var(--danger, #b44); }
+.bibliographyKeys { max-height: 72px; overflow: auto; }
 .projectPaletteGroups { display: flex; flex-wrap: wrap; gap: 10px; }
 .projectPalette fieldset { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; padding: 5px 8px 8px; border: 1px solid var(--border); border-radius: 8px; }
 .projectPalette legend { padding: 0 5px; color: var(--text-muted); font-weight: 650; }

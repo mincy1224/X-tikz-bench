@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { editableObjects, fontWithSize, setObjectProperty as writeObjectProperty, tikzColor, type EditableObject } from "tikz-editor/edit/editable-objects";
 import { advancedObject, editForestStructure, setAdvancedContent } from "tikz-editor/edit/advanced-objects";
 import { formatFieldsForSelection, supportsFormatProperty, setGeometryField, type FormatField } from "tikz-editor/edit/format-inspector";
-import { applyEditAction, type EditAction } from "tikz-editor/edit/actions";
+import { applyEditAction, readSimpleRectangle, rewriteSimpleRectangle, type EditAction } from "tikz-editor/edit/actions";
 import { getEditableNodeParts, nodePartProperty, updateNodePart, updateNodePartFill } from "tikz-editor/edit/multipart";
 import { getInspectorDescriptor } from "tikz-editor/edit/inspector";
 import { buildArrowTipSetPropertyMutation } from "tikz-editor/edit/property-write-builders";
@@ -44,6 +44,7 @@ export function FormatPanel() {
   const selected = useMemo(() => editableObjects(state.source, state.snapshot.scene?.elements, state.selectedElementIds, state.snapshot.parseResult, parseOptions), [state.source, state.snapshot.scene?.elements, state.selectedElementIds, state.snapshot.parseResult, parseOptions]);
   const key = `${state.activeDocumentId}:${selected.map((object) => object.id).join(",")}`;
   const single = selected.length === 1 ? selected[0] : null;
+  const simpleRectangle = single && readSimpleRectangle(state.source.slice(single.span.from, single.span.to));
   const setObjectProperty = (source: string, id: string, property: string, value: string) => writeObjectProperty(source, id, property, value, { activeFigureId: state.activeFigureId });
   const common = (property: string, fallback?: string): string | null => {
     const values = selected.map((object) => object.properties.get(property) ?? (fallback ? object.properties.get(fallback) : "") ?? "");
@@ -87,7 +88,15 @@ export function FormatPanel() {
                 return result.newSource;
               }, source), "箭头类型"); }}><option value="mixed" disabled>多个值</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><ArrowSizeEditor writes={allArrowFields.filter((candidate) => candidate.side === field.side).map((candidate) => candidate.write)} side={field.side} /></div> : null)}
           </Section>
-          <Section title="尺寸与位置"><label className={css.field}><span>缩放方式</span><select aria-label="缩放方式" value={resize.whole ? "whole" : "geometry"} onChange={(event) => { resize.set(event.target.value === "whole"); }}><option value="geometry">仅改变尺寸</option><option value="whole">整体缩放</option></select></label>{fields.filter((field) => field.group === "size").map(fieldControl)}</Section>
+          <Section title="尺寸与位置"><label className={css.field}><span>缩放方式</span><select aria-label="缩放方式" value={resize.whole ? "whole" : "geometry"} onChange={(event) => { resize.set(event.target.value === "whole"); }}><option value="geometry">仅改变尺寸</option><option value="whole">整体缩放</option></select></label>{fields.filter((field) => field.group === "size").map(fieldControl)}
+            {single && simpleRectangle && <>
+              <Field key={`${key}:corner-radius`} label="圆角" value={common("rounded corners")} unit="pt" write={(source, value) => setObjectProperty(source, single.id, "rounded corners", value)} />
+              <button type="button" onClick={() => { commit((source) => {
+                const rectangle = readSimpleRectangle(source.slice(single.span.from, single.span.to));
+                return rectangle ? source.slice(0, single.span.from) + rewriteSimpleRectangle(rectangle, { text: "文字" }) + source.slice(single.span.to) : source;
+              }, "为矩形添加文字"); }}>添加居中文字</button>
+            </>}
+          </Section>
           {selected.every((object) => !object.advanced) ? <Section title="排列"><label className={css.field}><span>对齐到</span><select aria-label="对齐到" value={alignToCanvas ? "canvas" : "selection"} onChange={(event) => { setAlignToCanvas(event.target.value === "canvas"); }}><option value="selection">选区</option><option value="canvas">画布</option></select></label><div className={css.buttons}>{(["left", "center", "right", "top", "middle", "bottom"] as const).map((mode, index) => <button type="button" key={mode} onClick={() => { action({ kind: "alignElements", elementIds: selected.map((object) => object.id), mode, referenceBounds: alignToCanvas ? state.snapshot.scene?.bounds : undefined }); }}>{["左对齐", "水平居中", "右对齐", "顶对齐", "垂直居中", "底对齐"][index]}</button>)}{(["x", "y"] as const).map((axis) => <button type="button" key={axis} onClick={() => { action({ kind: "distributeElements", elementIds: selected.map((object) => object.id), axis: axis === "x" ? "horizontal" : "vertical" }); }}>{axis === "x" ? "水平分布" : "垂直分布"}</button>)}<button type="button" onClick={() => { action({ kind: "groupElements", elementIds: selected.map((object) => object.id) }); }}>组合</button><button type="button" onClick={() => { action({ kind: "ungroupElements", elementIds: selected.map((object) => object.id) }); }}>取消组合</button></div></Section> : null}
         </> : <>
           {selected.every((object) => supportsFormatProperty(object, "font")) ? <Section title="文本">{parts ? <p className={css.note}>请在下方分别编辑各分区文字。</p> : single?.advanced?.content ? <Field key={`${key}:content`} label="内容" value={single.properties.get("content") ?? ""} multiline write={(source, value) => setAdvancedContent(source, single.id, value)} /> : single?.type === "tikz:matrix" ? <p className={css.note}>双击矩阵单元格以编辑内容；整体字号作用于所有单元格。</p> : single?.element && single.properties.has("supports-text") ? <Field key={`${key}:content`} label="内容" value={state.snapshot.scene?.elements.filter((element) => element.sourceRef.sourceId === single.id && element.kind === "Text").map((element) => element.kind === "Text" ? element.text : "").join("") ?? ""} multiline write={(source, value) => { const result = applyEditAction(source, [], { kind: "updateNodeText", elementId: single.id, text: value }, { parseOptions: { activeFigureId: state.activeFigureId } }); if (result.kind !== "success") throw new Error("此图形没有独立文本节点。"); return result.newSource; }} /> : null}

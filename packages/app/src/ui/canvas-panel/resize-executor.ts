@@ -12,7 +12,8 @@ type ResizeGesture = Extract<DragState, { kind: "resize" }>;
 export function resizePreviewCorners(drag: ResizeGesture, world: WorldPoint, shift: boolean, scaleContents: boolean): WorldPoint[] {
   const { initialFrame, role, measurementMode } = drag;
   const basis = resolveFrameBasis(initialFrame);
-  const measured = measureResize(drag, world, shift || scaleContents, null);
+  const edge = !role.includes("-");
+  const measured = measureResize(drag, world, scaleContents || !edge && shift, null);
   const width = /left|right/u.test(role) || scaleContents ? measured.width : basis.width;
   const height = /top|bottom/u.test(role) || scaleContents ? measured.height : basis.height;
   const signX = role.includes("left") ? -1 : role.includes("right") ? 1 : 0;

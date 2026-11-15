@@ -6,6 +6,7 @@ export type ServerConfig = {
   latexBin: string;
   kpsewhichBin?: string;
   xelatexBin?: string;
+  bibtexBin?: string;
   dvisvgmBin: string;
   dvipdfmxBin: string;
   sqliteBin: string;
@@ -42,6 +43,7 @@ export function loadConfig(argv = process.argv.slice(2)): ServerConfig {
     latexBin: process.env.TIKZ_LATEX_BIN ?? "latex",
     kpsewhichBin: process.env.TIKZ_KPSEWHICH_BIN ?? (path.isAbsolute(process.env.TIKZ_LATEX_BIN ?? "") ? path.join(path.dirname(process.env.TIKZ_LATEX_BIN!), "kpsewhich") : "kpsewhich"),
     xelatexBin: process.env.TIKZ_XELATEX_BIN ?? "xelatex",
+    bibtexBin: process.env.TIKZ_BIBTEX_BIN ?? (path.isAbsolute(process.env.TIKZ_XELATEX_BIN ?? "") ? path.join(path.dirname(process.env.TIKZ_XELATEX_BIN!), "bibtex") : "bibtex"),
     dvisvgmBin: process.env.TIKZ_DVISVGM_BIN ?? "dvisvgm",
     dvipdfmxBin: process.env.TIKZ_DVIPDFMX_BIN ?? "dvipdfmx",
     sqliteBin: process.env.TIKZ_SQLITE_BIN ?? "sqlite3",

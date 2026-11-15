@@ -23,7 +23,7 @@ flock -n 9 || { echo 'An upgrade or rollback is already running.' >&2; exit 1; }
 if [[ -z "$tex_dir" || ! -x "$tex_dir/xelatex" ]]; then
   tex_dir=$(find /usr/local/texlive -maxdepth 4 -type f -name dvisvgm 2>/dev/null | sort -Vr | head -n 1 | xargs -r dirname)
 fi
-[[ -x "$tex_dir/latex" && -x "$tex_dir/xelatex" ]] || { echo 'TeX Live was not found. Set TIKZ_TEX_BIN_DIR to the bin directory of an existing installation.' >&2; exit 1; }
+[[ -x "$tex_dir/latex" && -x "$tex_dir/xelatex" && -x "$tex_dir/bibtex" ]] || { echo 'TeX Live with BibTeX was not found. Set TIKZ_TEX_BIN_DIR to the bin directory of an existing installation.' >&2; exit 1; }
 if ! fc-list :lang=zh | grep -q .; then apt-get update; apt-get install -y fonts-noto-cjk; fi
 release=/opt/x-tikz-bench/releases/$version
 if [[ -d "$release" ]]; then

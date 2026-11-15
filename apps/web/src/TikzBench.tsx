@@ -14,6 +14,7 @@ type Project = {
   description: string;
   source: string;
   palette?: string;
+  bibliography?: { name: string; source: string; style: string } | null;
   revision: number;
   thumbnailSvg: string | null;
   createdAt: string;
@@ -196,7 +197,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
       revisionRef.current = saved.revision;
       const savedSource = withoutProjectFontBlock(saved.source);
       const editable = { ...saved, source: patch.source ?? (splitProjectSource(savedSource)?.body ?? savedSource) };
-      setProject(editable);
+      setProject((current) => current ? { ...editable, bibliography: current.bibliography } : editable);
       return editable;
   }), [fullSource, projectUrl]);
   const persist = useCallback((patch: ProjectPatch) => {
@@ -286,9 +287,16 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     onSaveShortcut,
     onShowTexProof: () => { setShowTexProof(true); }, compileSource, palette,
     onPaletteChange: async (next: string) => { await persist({ palette: next }); },
+    bibliography: project.bibliography ?? null,
+    onBibliographyChange: async (next: { name: string; source: string; style: string } | null) => {
+      const { bibliography } = await api<{ bibliography: Project["bibliography"] }>(`/api/projects/${id}/bibliography`, {
+        method: next ? "PUT" : "DELETE", headers: { "content-type": "application/json" }, body: next ? JSON.stringify(next) : undefined
+      });
+      setProject((current) => current && { ...current, bibliography });
+    },
     assets, onUploadAsset: uploadAsset,
     onDownloadTex: () => { void download("tex"); }
-  } : null, [assets, compileSource, download, leaveProject, onSaveShortcut, palette, persist, project, rename, saveStatus, uploadAsset]);
+  } : null, [assets, compileSource, download, id, leaveProject, onSaveShortcut, palette, persist, project, rename, saveStatus, uploadAsset]);
 
   async function switchCanvas(target: string) {
     if (switchingCanvas) return;

@@ -91,6 +91,7 @@ type CanvasPanelViewProps = {
   assistantLockReason: string | null;
   snapshot: CanvasSnapshot;
   svgModel: SvgRenderModel | null;
+  paperViewBox?: SvgRenderModel["viewBox"];
   svgLayerHostRef: RefObject<HTMLDivElement | null>;
   canvasTransform: CanvasTransform;
   onCanvasScroll: (transform: CanvasTransform) => void;
@@ -225,6 +226,7 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
     assistantLockReason,
     snapshot,
     svgModel,
+    paperViewBox,
     svgLayerHostRef,
     canvasTransform,
     onCanvasScroll,
@@ -526,12 +528,17 @@ export function CanvasPanelView(props: CanvasPanelViewProps) {
                 transform: `translate(${canvasTransform.translateX}px, ${canvasTransform.translateY}px)`
               }}
             >
+              {paperViewBox && <div className={`${css.svgLayer} ${css.paperPreview}`} aria-hidden="true" data-testid="canvas-paper-preview"
+                style={{ inset: "auto", left: (paperViewBox.x - svgResult.viewBox.x) * canvasTransform.scale,
+                  top: (paperViewBox.y - svgResult.viewBox.y) * canvasTransform.scale,
+                  width: paperViewBox.width * canvasTransform.scale, height: paperViewBox.height * canvasTransform.scale }} />}
               <CanvasSVGLayer
                 model={svgModel}
                 diffHints={svgDiffHints}
                 forceReplaceAll={forceSvgReplaceAll}
                 showTransparencyGrid={showTransparencyGrid}
                 showDocumentBounds={showDocumentBounds}
+                transparentPaper={Boolean(paperViewBox)}
                 onFallback={onSvgPatchFallback}
                 hostRef={svgLayerHostRef}
               />
