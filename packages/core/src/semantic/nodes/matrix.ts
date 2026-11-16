@@ -221,8 +221,13 @@ export function evaluateMatrixNodeItem(params: EvaluateMatrixNodeParams): Matrix
         options: combinedCellOptions,
         cellSpan: rawCell.span
       };
-      colWidths[column] = Math.max(colWidths[column], cellLayout.visualWidth);
-      rowHeights[row] = Math.max(rowHeights[row], cellLayout.visualHeight);
+      // PGF separates the painted cell bounds. A stroke extends half its
+      // width on either side, so a gap of -lineWidth aligns shared edges.
+      const drawsCell = resolveNodeBoxPaintMode(combinedCellOptions).draw ||
+        (!params.style.drawExplicit && cellTextStyle.drawExplicit);
+      const strokeWidth = drawsCell && cellTextStyle.stroke && cellTextStyle.stroke !== "none" ? cellTextStyle.lineWidth : 0;
+      colWidths[column] = Math.max(colWidths[column], cellLayout.visualWidth + strokeWidth);
+      rowHeights[row] = Math.max(rowHeights[row], cellLayout.visualHeight + strokeWidth);
     }
   }
 

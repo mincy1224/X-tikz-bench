@@ -179,6 +179,19 @@ test("Ctrl+G groups the selection and one undo restores source positions", async
   expect((await readSource(page)).match(/\\draw/g)).toHaveLength(2);
 });
 
+test("selected source text remains visible on the active line", async ({ page }) => {
+  await gotoApp(page);
+  await setSource(page, String.raw`\draw (0,0) -- (1,1);`);
+  const editor = page.locator(".cm-content").first();
+  await editor.focus();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect(page.locator(".cm-selectionBackground").first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe(";");
+  // CodeMirror draws selection underneath line backgrounds.
+  await expect(page.locator(".cm-activeLine").first()).toHaveCSS("background-color", /\/ 0\.07\)/u);
+});
+
 test("blank row vector cells accept text and move through the row with Tab", async ({ page }) => {
   await gotoApp(page);
   await expect(page.getByTestId("menu-section-help")).toHaveCount(0);

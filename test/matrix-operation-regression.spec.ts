@@ -28,6 +28,20 @@ function displacement(before: string, after: string, id: string, x: number, y: n
 }
 
 describe("matrix and unified operation regressions", () => {
+  it("aligns painted cell edges when negative spacing equals stroke width", () => {
+    const source = String.raw`\begin{tikzpicture}
+\tikzset{tb array/.style={matrix of nodes,nodes in empty cells,nodes={draw=black,line width=.4pt,anchor=center,inner sep=0pt,outer sep=0pt,minimum width=14.9311pt,minimum height=16.3554pt},row sep=-.4pt,column sep=-.4pt}}
+\matrix[tb array] {A & |[fill=blue!20]| B \\ C & D \\};
+\end{tikzpicture}`;
+    const { semantic } = geometry(source);
+    const cells = semantic.scene.elements.filter((element) => element.kind === "Path" && element.matrixCell);
+    const cellBounds = (row: number, column: number) => {
+      const cell = cells.find((element) => element.matrixCell?.row === row && element.matrixCell.column === column)!;
+      return collectArrangeWorldBounds([cell], []).get(cell.sourceRef.sourceId)!;
+    };
+    expect(cellBounds(1, 1).maxX).toBeCloseTo(cellBounds(1, 2).minX, 4);
+    expect(cellBounds(1, 2).minY).toBeCloseTo(cellBounds(2, 2).maxY, 4);
+  });
   it("renders named TikZ matrix styles like their inline options", () => {
     const options = "matrix of nodes,nodes in empty cells,nodes={draw=black,line width=.4pt,anchor=center,inner sep=0pt,outer sep=0pt,minimum width=14.9311pt,minimum height=16.3554pt},row sep=-.4pt,column sep=-.4pt";
     const matrix = String.raw`\matrix[STYLE] (tb-array-1) at (-10.008307,4.053249) {A & B & & D & E & F \\};`;
@@ -145,7 +159,7 @@ describe("matrix content scaling", () => {
     expect(resized.minX).toBeCloseTo(b.minX, 2);
     const beforeFont = g.semantic.scene.elements.find((element) => element.kind === "Text")!.style.fontSize;
     const afterFont = after.semantic.scene.elements.find((element) => element.kind === "Text")!.style.fontSize;
-    expect(afterFont).toBe(beforeFont * (whole ? 2 : 1));
+    expect(afterFont).toBeCloseTo(beforeFont * (whole ? 2 : 1), 10);
     const ungrouped = applyEditAction(next, [], { kind: "ungroupElements", elementIds: ["scope:0"] });
     expect(ungrouped.kind).toBe("success");
     if (ungrouped.kind === "success") {

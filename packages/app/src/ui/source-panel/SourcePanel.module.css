@@ -78,7 +78,9 @@
 
 .editorWrap :global(.cm-content) { padding: 16px 0; }
 .editorWrap :global(.cm-gutters) { padding: 16px 0; background: var(--bg-header); border-right: 1px solid var(--border-lighter); color: var(--text-dim); }
-.editorWrap :global(.cm-activeLine), .editorWrap :global(.cm-activeLineGutter) { background: color-mix(in srgb, var(--accent) 7%, var(--bg-pane)); }
+.editorWrap :global(.cm-activeLine), .editorWrap :global(.cm-activeLineGutter) { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.editorWrap :global(.cm-editor .cm-selectionBackground) { background-color: color-mix(in srgb, var(--accent) 24%, transparent); }
+.editorWrap :global(.cm-editor.cm-focused .cm-selectionBackground) { background-color: color-mix(in srgb, var(--accent) 36%, transparent); }
 
 .editorWrap :global(.cm-content),
 .editorWrap :global(.cm-content *) {
