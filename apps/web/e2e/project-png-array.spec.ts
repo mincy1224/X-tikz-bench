@@ -97,6 +97,7 @@ test("a project ZIP merges legacy image placements into the editable TikZ body",
 
 test("a project bibliography is managed outside canvas code and survives ZIP import", async ({ page, request }) => {
   await gotoApp(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const projectId = new URL(page.url()).pathname.split("/").at(-1)!;
   await page.route("**/api/projects/" + projectId + "/bibliography", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
@@ -118,6 +119,11 @@ test("a project bibliography is managed outside canvas code and survives ZIP imp
   await expect.poll(async () => (await (await request.get(`/api/projects/${projectId}`)).json()).project.bibliography.style).toBe("alpha");
   await expect(page.getByTestId("canvas-svg-layer").locator('[fill="#a12468" i], [style*="#a12468" i]').first()).toBeAttached();
   expect(await readSource(page)).not.toContain("bibliographystyle");
+  await page.getByRole("button", { name: "Copy Config" }).click();
+  await expect(page.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toContain("\\bibliographystyle{alpha}");
+  expect(copied).not.toContain("\\node");
   const archive = unzipSync(await (await request.post(`/api/projects/${projectId}/export/tex`, { data: { source: await readSource(page) } })).body());
   expect(strFromU8(archive["main.tex"])).toContain("\\bibliographystyle{alpha}");
   expect(strFromU8(archive["main.tex"])).toContain("\\bibliography{references}");

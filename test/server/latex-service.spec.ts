@@ -1,8 +1,26 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../apps/server/src/config";
-import { assertSafeSvg, createStandaloneDocument, parseLatexDiagnostics, resolveCompileProfile } from "../../apps/server/src/latex/compiler";
+import { assertSafeSvg, createProjectConfig, createStandaloneDocument, parseLatexDiagnostics, resolveCompileProfile } from "../../apps/server/src/latex/compiler";
 
 const originalEnv = { ...process.env };
+
+it("copies a reusable project preamble with dependencies, palette and citation settings", () => {
+  const source = String.raw`% x-tikz-bench: palette start
+\definecolor{main-xyb}{HTML}{123456}
+% x-tikz-bench: palette end
+\node {\includegraphics{assets/sample.png} \cite{demo}};`;
+  const config = createProjectConfig(source, {
+    name: "demo.bib", source: "@book{demo,title={Example}}", style: "alpha",
+    links: { enabled: true, color: "#336699", format: "underline" }
+  });
+  expect(config).toContain("\\usepackage{graphicx}");
+  expect(config).toContain("\\definecolor{main-xyb}{HTML}{123456}");
+  expect(config).toContain("\\bibliographystyle{alpha}");
+  expect(config).toContain("\\AtEndDocument");
+  expect(config).toContain("\\bibliography{references}");
+  expect(config).toContain("\\definecolor{xtbcitelink}{HTML}{336699}");
+  expect(config).not.toMatch(/\\documentclass|\\begin\{document\}|\\node/u);
+});
 
 describe("compile profile selection", () => {
   it.each(["中文", String.raw`\usepackage{tikz,fontspec}`, String.raw`\documentclass[12pt]{ctexart}`, String.raw`\setmainfont{FandolSong}`])("selects XeLaTeX for %s", (source) => {
@@ -98,4 +116,16 @@ it("places project bibliography setup outside the editable TikZ body", () => {
   expect(document).toContain("\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup");
   expect(document.indexOf("\\bibliographystyle{alpha}")).toBeLessThan(document.indexOf("\\begin{document}"));
   expect(document.indexOf("\\bibliography{references}")).toBeGreaterThan(document.indexOf("\\end{tikzpicture}"));
+});
+it("repairs old bare RGB path options in project proof and export source", () => {
+  const rgb = "{rgb,255:red,161;green,161;blue,161}";
+  const source = "% \\draw[" + rgb + "] stays in the comment\n" +
+    "\\fill[opacity=.5," + rgb + "] (0,0) rectangle (1,1);\n" +
+    "\\draw[" + rgb + "] (0,0) -- (1,1);\n" +
+    "\\fill[fill=" + rgb + "] (2,2) rectangle (3,3);";
+  const document = createStandaloneDocument(source, "xelatex", true);
+  expect(document).toContain("% \\draw[" + rgb + "] stays in the comment");
+  expect(document).toContain("\\fill[opacity=.5,fill=" + rgb + "]");
+  expect(document).toContain("\\draw[draw=" + rgb + "]");
+  expect(document).toContain("\\fill[fill=" + rgb + "] (2,2)");
 });

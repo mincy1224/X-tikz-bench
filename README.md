@@ -9,6 +9,7 @@ X-TikZ Bench is a self-hosted web editor for TikZ figures. Each project can cont
 - Add and edit shared colors in **Palette**. Click a color name to copy its TikZ alias.
 - Open **Cite** to import and edit one project-wide `.bib` file, choose a BibTeX style, and copy citation commands. Place `\cite{key}` in a canvas text node. The bibliography setup lives in `main.tex`, outside the editable canvas source. Citation links open the matching entry in a separate `references.pdf`. The color and underline settings apply to the complete citation, including its brackets.
 - Open **TeX Proof** to compile the current canvas with XeLaTeX and view its PDF. The default serif font is Times New Roman when available, with TeX Gyre Termes as a fallback. A font explicitly set by the project takes precedence.
+- Use **Copy Config** to copy the current canvas preamble for an existing LaTeX document. The snippet includes packages, libraries, shared colors, and citation settings. Keep any referenced assets and bibliography files with the destination document.
 - Choose **Export LaTeX Project** to download a ZIP containing `main.tex`, `figure.tikz`, and `assets/`. Projects with a bibliography also include `references.bib`, `references.tex`, and the compiled `references.pdf` in the root of the ZIP. To rebuild a cited figure, run `xelatex main.tex`, `bibtex main`, then `xelatex main.tex` twice and `xelatex references.tex`. Keep `main.pdf` and `references.pdf` together for citation links to work.
 
 ## Install or update on Linux and WSL2

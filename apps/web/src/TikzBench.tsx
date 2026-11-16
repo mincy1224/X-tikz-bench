@@ -306,8 +306,14 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
       setProject((current) => current && { ...current, bibliography });
     },
     assets, onUploadAsset: uploadAsset,
+    getProjectConfig: async (source: string) => {
+      const result = await api<{ config: string }>("/api/projects/" + id + "/export/config?canvas=" + encodeURIComponent(canvasId), {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source: withPalette(fullSource(source)) })
+      });
+      return result.config;
+    },
     onDownloadTex: () => { void download("tex"); }
-  } : null, [assets, compileSource, download, id, leaveProject, onSaveShortcut, palette, persist, project, rename, resolveCitationLabels, saveStatus, uploadAsset]);
+  } : null, [assets, canvasId, compileSource, download, fullSource, id, leaveProject, onSaveShortcut, palette, persist, project, rename, resolveCitationLabels, saveStatus, uploadAsset, withPalette]);
 
   async function switchCanvas(target: string) {
     if (switchingCanvas) return;

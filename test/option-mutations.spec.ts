@@ -20,15 +20,21 @@ describe("option mutation serialization", () => {
     expect(rewriteOptionListMutations(parseOptionListRaw("[red, -]"), mutations)).toBe("[red]");
   });
 
-  it("serializes bare draw colors only for color-like values", () => {
+  it("writes exact RGB as an explicit path color", () => {
     const drawContext = { bareColorKey: "draw" as const };
 
     expect(serializeOptionEntry("draw", "{rgb,255:red,1;green,2;blue,3}", drawContext)).toBe(
-      "{rgb,255:red,1;green,2;blue,3}"
+      "draw={rgb,255:red,1;green,2;blue,3}"
     );
     expect(serializeOptionEntry("draw", "red!30!blue", drawContext)).toBe("red!30!blue");
     expect(serializeOptionEntry("draw", "not a color expression", drawContext)).toBe(
       "draw=not a color expression"
     );
+  });
+
+  it("replaces a legacy bare RGB option instead of leaving it alongside the new color", () => {
+    const options = parseOptionListRaw("[opacity=.5,{rgb,255:red,161;green,161;blue,161}]");
+    expect(rewriteOptionListMutations(options, new Map([["fill", { kind: "set", value: "red" }]]), { bareColorKey: "fill" }))
+      .toBe("[opacity=.5, red]");
   });
 });

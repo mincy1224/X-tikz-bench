@@ -1,6 +1,7 @@
 import type { Span } from "../ast/types.js";
 import type { OptionEntry, OptionListAst } from "../options/types.js";
 import { NAMED_COLORS } from "../semantic/style/constants.js";
+import { LEGACY_BARE_RGB } from "../tex/legacy-rgb-options.js";
 import { replaceSpan } from "./patch.js";
 import type { PropertyTarget, PropertyTargetOptionsFormat } from "./property-target.js";
 import type { SourcePatch } from "./types.js";
@@ -133,8 +134,8 @@ export function rewriteOptionListMutations(
     const entryKey = optionEntryKey(entry);
     const directMutation = entryKey ? mutations.get(entryKey) : undefined;
     const aliasKey =
-      entry.kind === "flag" && !directMutation
-        ? resolveFlagAliasKey(entry, mutations, serializationContext)
+      !directMutation
+        ? resolveBareColorAliasKey(entry, mutations, serializationContext)
         : null;
     const mutationKey = directMutation ? entryKey : aliasKey;
     const mutation = directMutation ?? (aliasKey ? mutations.get(aliasKey) : undefined);
@@ -186,8 +187,8 @@ function rewriteOptionListMutationsPreservingSource(
     const entryKey = optionEntryKey(entry);
     const directMutation = entryKey ? mutations.get(entryKey) : undefined;
     const aliasKey =
-      entry.kind === "flag" && !directMutation
-        ? resolveFlagAliasKey(entry, mutations, serializationContext)
+      !directMutation
+        ? resolveBareColorAliasKey(entry, mutations, serializationContext)
         : null;
     const mutationKey = directMutation ? entryKey : aliasKey;
     const mutation = directMutation ?? (aliasKey ? mutations.get(aliasKey) : undefined);
@@ -598,12 +599,13 @@ function shouldSerializeAsBareColorOption(
     serializationContext.bareColorKey === key &&
     normalizedValue !== "false" &&
     normalizedValue !== "none" &&
+    !/^\{?\s*rgb\s*[, :]/iu.test(value) &&
     isLikelyBareColorOption(value)
   );
 }
 
-function resolveFlagAliasKey(
-  entry: Extract<OptionEntry, { kind: "flag" }>,
+function resolveBareColorAliasKey(
+  entry: OptionEntry,
   mutations: ReadonlyMap<string, OptionMutation>,
   serializationContext: OptionSerializationContext
 ): string | null {
@@ -612,7 +614,8 @@ function resolveFlagAliasKey(
     return null;
   }
 
-  return isLikelyBareColorOption(entry.key) ? bareColorKey : null;
+  if (entry.kind === "unknown" && LEGACY_BARE_RGB.test(entry.raw)) return bareColorKey;
+  return entry.kind === "flag" && isLikelyBareColorOption(entry.key) ? bareColorKey : null;
 }
 
 function isLikelyBareColorOption(raw: string): boolean {

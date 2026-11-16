@@ -265,6 +265,7 @@ export type AppProps = {
     assets: readonly ProjectAsset[];
     onUploadAsset: (file: File) => Promise<ProjectAsset>;
     onDownloadTex: () => void;
+    getProjectConfig: (source: string) => Promise<string>;
   };
 };
 
@@ -2160,11 +2161,21 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
             void importAssets(files);
           }} />
           <button type="button" className={css.projectExport} onClick={() => {
-            void navigator.clipboard.writeText(source).then(() => {
+            const copy = async () => {
+              const config = project.getProjectConfig(source);
+              if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+                await navigator.clipboard.write([new ClipboardItem({
+                  "text/plain": config.then((value) => new Blob([value], { type: "text/plain" }))
+                })]);
+              } else {
+                await navigator.clipboard.writeText(await config);
+              }
+            };
+            void copy().then(() => {
               setProjectCopyStatus("copied");
               window.setTimeout(() => { setProjectCopyStatus("idle"); }, 2200);
             }).catch(() => { setProjectCopyStatus("error"); });
-          }}>{projectCopyStatus === "copied" ? "Copied" : projectCopyStatus === "error" ? "Copy failed" : "Copy TikZ"}</button>
+          }}>{projectCopyStatus === "copied" ? "Copied" : projectCopyStatus === "error" ? "Copy failed" : "Copy Config"}</button>
           <button type="button" className={css.projectExportPrimary} onClick={project.onDownloadTex}>导出 LaTeX 工程</button>
         </div>
       ) : null}

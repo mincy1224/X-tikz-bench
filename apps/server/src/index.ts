@@ -3,7 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "./config.js";
-import { checkLatex, compileLatex, compileLatexPdf, createStandaloneDocument, LatexCompileError, resolveBibliographyLabels } from "./latex/compiler.js";
+import { checkLatex, compileLatex, compileLatexPdf, createProjectConfig, createStandaloneDocument, LatexCompileError, resolveBibliographyLabels } from "./latex/compiler.js";
 import { isCitationLinks } from "../../../packages/core/src/tex/citation-links.js";
 import { createReferencesDocument } from "./latex/citation-links.js";
 import { createProject, createProjectCanvas, getAllProjectAssets, getAssetPreview, getProject, getProjectBibliography, getProjectCanvas, getReferencedProjectPngs, initializeProjectStore, listProjectAssets, listProjects, ProjectInputError, renameProjectCanvas, restoreProject, saveProjectBibliography, softDeleteProject, storeProjectPng, updateProject, type ProjectBibliography } from "./projects/store.js";
@@ -230,7 +230,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       json(response, deleted ? 200 : 404, deleted ? { ok: true } : { error: "Project not found." });
       return;
     }
-    const exportMatch = /^\/api\/projects\/([0-9a-f-]+)\/export\/(tex|svg|pdf)$/iu.exec(url.pathname);
+    const exportMatch = /^\/api\/projects\/([0-9a-f-]+)\/export\/(tex|svg|pdf|config)$/iu.exec(url.pathname);
     if (exportMatch && (request.method === "GET" || request.method === "POST")) {
       const project = await getProjectCanvas(config, exportMatch[1] ?? "", canvasId);
       if (!project || project.deletedAt) { json(response, 404, { error: "Project not found." }); return; }
@@ -238,6 +238,11 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       if (draft && (typeof draft.source !== "string" || Buffer.byteLength(draft.source, "utf8") > config.maxSourceBytes)) { json(response, 413, { error: "Invalid or oversized source." }); return; }
       const source = draft ? draft.source as string : project.source;
       const exportSource = project.palette && !PROJECT_PALETTE_BLOCK.test(source) ? project.palette.trimEnd() + "\n" + source : source;
+      if (exportMatch[2] === "config") {
+        const bibliography = await getProjectBibliography(config, project.id);
+        json(response, 200, { config: createProjectConfig(exportSource, bibliography) });
+        return;
+      }
       if (exportMatch[2] === "tex") {
         try {
           const pngs = await getAllProjectAssets(config, project.id);

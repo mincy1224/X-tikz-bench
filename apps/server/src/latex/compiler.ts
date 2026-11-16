@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ServerConfig } from "../config.js";
 import type { ProjectBibliography } from "../projects/store.js";
+import { repairLegacyRgbOptions } from "../../../../packages/core/src/tex/legacy-rgb-options.js";
 import { citationLinkPreamble, createReferencesDocument } from "./citation-links.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
 import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
@@ -238,7 +239,22 @@ export async function compileLatex(source: string, config: ServerConfig, request
   }
 }
 
+function bibliographyFooter(bibliography: ProjectBibliography): string {
+  const includeAll = /@(?!comment\b|string\b|preamble\b)\w+\s*[({]/iu.test(bibliography.source);
+  return (includeAll ? "\\nocite{*}\n" : "") + "\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup\n";
+}
+
+export function createProjectConfig(source: string, bibliography?: ProjectBibliography | null): string {
+  const document = createStandaloneDocument(source, "xelatex", true, bibliography);
+  const { preamble } = extractTexEnvironment(document);
+  const footer = bibliography
+    ? "\n% Keep references.bib beside the document and run BibTeX.\n\\AtEndDocument{%\n" + bibliographyFooter(bibliography) + "}\n"
+    : "";
+  return preamble.trim() + "\n" + footer;
+}
+
 export function createStandaloneDocument(source: string, requestedProfile: CompileProfile = "auto", projectDefaults = false, bibliography?: ProjectBibliography | null, citationTarget: string | null = "references.pdf"): string {
+  if (projectDefaults) source = repairLegacyRgbOptions(source);
   if (bibliography) {
     const document = createStandaloneDocument(source, requestedProfile, projectDefaults);
     const preambleEnd = document.indexOf("\\begin{document}");
@@ -248,10 +264,8 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
     const linkSettings = bibliography.links ? "% x-tikz-bench: citation-links " + JSON.stringify(bibliography.links) + "\n" : "";
     const linkSetup = bibliography.links?.enabled ? citationLinkPreamble(bibliography.links, !packages.has("hyperref"), citationTarget) + "\n" : "";
     const setup = `% x-tikz-bench: bibliography start\n${citePackage}\\bibliographystyle{${bibliography.style}}\n${linkSettings}${linkSetup}% x-tikz-bench: bibliography end\n`;
-    const includeAll = /@(?!comment\b|string\b|preamble\b)\w+\s*[({]/iu.test(bibliography.source);
-    const suffix = (includeAll ? "\\nocite{*}\n" : "") + "\\begingroup\\setbox0=\\vbox{\\bibliography{references}}\\endgroup\n";
     const withSetup = document.slice(0, preambleEnd) + setup + document.slice(preambleEnd);
-    return withSetup.replace(/\\end\{document\}\s*$/u, `${suffix}\\end{document}\n`);
+    return withSetup.replace(/\\end\{document\}\s*$/u, `${bibliographyFooter(bibliography)}\\end{document}\n`);
   }
   const palette = projectDefaults ? PROJECT_PALETTE_BLOCK.exec(source)?.[0] : undefined;
   if (palette) {
