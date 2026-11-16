@@ -30,8 +30,12 @@ test("PNG is editable, locked, persisted and packaged with the same source", asy
   const image = page.locator(`[data-testid="canvas-svg-layer"] image[data-project-png="${key}"]`);
   await expect(image).toHaveAttribute("href", `${api}/png/${key}`);
   await expect(image.locator("xpath=preceding-sibling::*")).toHaveAttribute("display", "none");
+  const viewport = page.getByTestId("canvas-viewport");
+  const beforeSelection = await viewport.boundingBox();
   await image.click({ force: true });
   const bar = page.getByRole("group", { name: "PNG 属性" });
+  await expect(bar).toBeVisible();
+  expect((await viewport.boundingBox())?.y).toBe(beforeSelection?.y);
   const width = bar.getByRole("spinbutton", { name: /宽度/ });
   await expect(width).toHaveValue("48");
   await width.fill("60"); await width.press("Enter");

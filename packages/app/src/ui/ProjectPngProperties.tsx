@@ -1,7 +1,7 @@
 import { useEditorStore } from "../store/store";
 import { parseProjectPng, projectPngText, PNG_LOCK_MARKER, type EditAction } from "tikz-editor/edit/actions";
 import { findPathStatementById } from "tikz-editor/edit/statement-find";
-import css from "./App.module.css";
+import css from "./format-panel.module.css";
 
 export function ProjectPngProperties() {
   const selected = useEditorStore((state) => state.selectedElementIds);
@@ -35,24 +35,26 @@ export function ProjectPngProperties() {
       source: source.slice(0, from) + replacement + source.slice(to), label: locked ? "解锁 PNG" : "锁定 PNG" });
   };
   const format = png.key.endsWith(".pdf") ? "PDF" : "PNG";
-  return <div className={css.projectObjectBar} role="group" aria-label={`${format} 属性`}>
-    <strong>{format}</strong>
-    {(["width", "height"] as const).map((axis) => <label key={axis}>{axis === "width" ? "宽度" : "高度"} (pt)
+  return <section className={css.section} role="group" aria-label={`${format} 属性`}>
+    <h3>{format} 素材</h3>
+    {(["width", "height"] as const).map((axis) => <label className={css.field} key={axis}><span>{axis === "width" ? "宽度" : "高度"} (pt)</span>
       <input key={`${elementId}:${png[axis]}`} type="number" min="0.1" max="16000" step="0.1" disabled={locked} defaultValue={png[axis]} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={(event) => {
         const value = event.currentTarget.valueAsNumber;
         if (value >= 0.1 && value <= 16_000 && value !== png[axis]) dispatch({ kind: "updateNodeText", elementId, text: projectPngText({ ...png, [axis]: value }) });
         else event.currentTarget.value = String(png[axis]);
       }} />
     </label>)}
-    <label>不透明度 (%)
+    <label className={css.field}><span>不透明度 (%)</span>
       <input key={`${elementId}:${image.style.textOpacity}`} type="number" min="0" max="100" disabled={locked} defaultValue={Math.round(image.style.textOpacity * 100)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={(event) => {
         const value = event.currentTarget.valueAsNumber;
         if (value >= 0 && value <= 100 && value !== Math.round(image.style.textOpacity * 100)) property("opacity", String(value / 100));
         else event.currentTarget.value = String(Math.round(image.style.textOpacity * 100));
       }} />
     </label>
-    <button type="button" onClick={toggleLock}>{locked ? "解锁" : "锁定"}</button>
-    <button type="button" disabled={locked} onClick={() => { dispatch({ kind: "reorderElements", elementIds: [elementId], direction: "bringToFront" }); }}>置顶</button>
-    <button type="button" disabled={locked} onClick={() => { dispatch({ kind: "reorderElements", elementIds: [elementId], direction: "sendToBack" }); }}>置底</button>
-  </div>;
+    <div className={css.buttons}>
+      <button type="button" onClick={toggleLock}>{locked ? "解锁" : "锁定"}</button>
+      <button type="button" disabled={locked} onClick={() => { dispatch({ kind: "reorderElements", elementIds: [elementId], direction: "bringToFront" }); }}>置顶</button>
+      <button type="button" disabled={locked} onClick={() => { dispatch({ kind: "reorderElements", elementIds: [elementId], direction: "sendToBack" }); }}>置底</button>
+    </div>
+  </section>;
 }
