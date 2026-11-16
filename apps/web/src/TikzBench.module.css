@@ -57,6 +57,9 @@
 .editorLoading { min-height: 100vh; display: grid; place-items: center; color: #757d8b; }
 
 .dialogBackdrop { position: fixed; inset: 0; z-index: 20000; display: grid; place-items: center; padding: 20px; background: rgb(26 31 45 / 52%); backdrop-filter: blur(6px); }
+dialog.projectDialog { margin: auto; width: min(680px, calc(100vw - 40px)); color: var(--text); }
+dialog.projectDialog::backdrop { background: rgb(26 31 45 / 52%); backdrop-filter: blur(6px); }
+.projectDialog textarea.preambleSource { font-family: var(--font-mono, monospace); }
 .projectDialog { width: min(440px, 100%); padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-pane); color: var(--text); box-shadow: 0 24px 72px rgb(18 24 38 / 24%); }
 .projectDialog h2 { margin: 0 0 24px; font-size: 22px; letter-spacing: -.035em; }
 .projectDialog label { display: block; margin-bottom: 19px; color: #434b58; font-size: 12px; font-weight: 650; }

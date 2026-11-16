@@ -4,9 +4,11 @@ import { RiAddLine, RiEditLine } from "@remixicon/react";
 import { App, ProjectBrand } from "@tikz-editor/app";
 import css from "./TikzBench.module.css";
 import { ProjectDialog } from "./ProjectDialog";
+import { PreambleDialog } from "./PreambleDialog";
 import { CoalescingSaveQueue } from "./coalescing-save-queue";
 import { TexProof } from "./TexProof";
-import { splitProjectSource, withoutProjectFontBlock, withoutProjectPalette } from "tikz-editor/tex/project-source";
+import { CUSTOM_PREAMBLE_BLOCK, CUSTOM_PREAMBLE_MARKER, splitProjectSource, withoutProjectFontBlock, withoutProjectPalette } from "tikz-editor/tex/project-source";
+import { scanTexCommands } from "tikz-editor/tex/environment";
 import type { ProjectAsset } from "@tikz-editor/app";
 
 type Project = {
@@ -154,7 +156,23 @@ function ProjectHome() {
   );
 }
 
-type ProjectPatch = { source?: string; palette?: string; name?: string; description?: string; thumbnailSvg?: string };
+type ProjectPatch = { source?: string; preamble?: string; palette?: string; name?: string; description?: string; thumbnailSvg?: string };
+
+function withCustomPreamble(source: string, preamble: string): string {
+  if (scanTexCommands(preamble).some(({ name, arguments: args }) => name === "documentclass" ||
+    (name === "begin" || name === "end") && args[0] === "document") || preamble.includes("% x-tikz-bench: custom preamble")) {
+    throw new Error("这里只需填写导言区命令。文档类和文档边界由工程管理。");
+  }
+  const template = splitProjectSource(source);
+  const prefix = template?.prefix ?? "\\begin{tikzpicture}";
+  const cleanPrefix = prefix.replace(CUSTOM_PREAMBLE_BLOCK, "");
+  const start = scanTexCommands(cleanPrefix, true).find(({ name, arguments: args }) =>
+    name === "begin" && ["document", "tikzpicture", "tikzpicture*"].includes(args[0]))?.span.from ?? 0;
+  const block = preamble.trim() ? CUSTOM_PREAMBLE_MARKER + "\n" + preamble.trim() + "\n% x-tikz-bench: custom preamble end\n" : "";
+  const before = cleanPrefix.slice(0, start);
+  const configuredPrefix = before + (block && before && !before.endsWith("\n") ? "\n" : "") + block + cleanPrefix.slice(start);
+  return configuredPrefix + "\n" + (template?.body ?? source) + "\n" + (template?.suffix ?? "\\end{tikzpicture}");
+}
 
 function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
   const [project, setProject] = useState<Project | null>(null);
@@ -169,6 +187,7 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
   const [editInfo, setEditInfo] = useState(false);
   const [saveCopy, setSaveCopy] = useState(false);
   const [showTexProof, setShowTexProof] = useState(false);
+  const [showPreamble, setShowPreamble] = useState(false);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [canvasAction, setCanvasAction] = useState<"create" | "rename" | null>(null);
   const [canvasError, setCanvasError] = useState("");
@@ -190,13 +209,17 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     const additions = instrumented.prefix.slice(0, getPictureStart(instrumented.prefix));
     return withPalette(`${template.prefix.slice(0, offset)}\n${additions}${template.prefix.slice(offset)}\n${instrumented.body}\n${template.suffix}`);
   }, [fullSource, withPalette]);
-  const saveQueue = useMemo(() => new CoalescingSaveQueue<ProjectPatch, Project>(async (patch) => {
+  const saveQueue = useMemo(() => new CoalescingSaveQueue<ProjectPatch, Project>(async ({ preamble, ...patch }) => {
+      const source = preamble === undefined
+        ? patch.source === undefined ? undefined : fullSource(patch.source)
+        : withCustomPreamble(fullSource(patch.source ?? draftRef.current), preamble);
       const { project: saved } = await api<{ project: Project }>(projectUrl, {
         method: "PATCH", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...patch, source: patch.source === undefined ? undefined : fullSource(patch.source), expectedRevision: revisionRef.current })
+        body: JSON.stringify({ ...patch, source, expectedRevision: revisionRef.current })
       });
       revisionRef.current = saved.revision;
       const savedSource = withoutProjectFontBlock(saved.source);
+      if (preamble !== undefined) sourceTemplate.current = splitProjectSource(savedSource);
       const editable = { ...saved, source: patch.source ?? (splitProjectSource(savedSource)?.body ?? savedSource) };
       setProject((current) => current ? { ...editable, bibliography: current.bibliography } : editable);
       return editable;
@@ -350,11 +373,15 @@ function ProjectEditor({ id, canvasId }: { id: string; canvasId: string }) {
     </div>
     <button type="button" onClick={() => { setCanvasAction("create"); }}><RiAddLine size={16} aria-hidden="true" />新建画布</button>
     <button type="button" onClick={() => { setCanvasAction("rename"); }}><RiEditLine size={15} aria-hidden="true" />重命名画布</button>
+    <button type="button" onClick={() => { setShowPreamble(true); }}>导言区</button>
     {canvasError ? <span role="alert">{canvasError}</span> : null}
   </nav>;
 
   return projectProps ? <>
     <App project={projectProps} canvasNavigation={canvasNavigation} />
+    {showPreamble && <PreambleDialog initialValue={CUSTOM_PREAMBLE_BLOCK.exec(sourceTemplate.current?.prefix ?? "")?.[1].trimEnd() ?? ""}
+      onSave={async (preamble) => { await persist({ preamble }); }}
+      onClose={() => { setShowPreamble(false); }} />}
     {canvasAction && <ProjectDialog canvasAction={canvasAction}
       name={canvasAction === "rename" ? project?.canvases?.find((canvas) => canvas.id === canvasId)?.name : ""}
       onSubmit={saveCanvasName} onClose={() => { setCanvasAction(null); }} />}

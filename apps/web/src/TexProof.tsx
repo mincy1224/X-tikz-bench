@@ -52,7 +52,9 @@ export function TexProof({ projectId, canvasName, source, onClose }: { projectId
         if (controller.signal.aborted || version.current !== Number(requestVersion)) return;
         setStatus("error");
         const details = error instanceof Error ? error.message : String(error);
-        setMessage(/(?:spawn|ENOENT)/iu.test(details) ? `服务器未能启动 TeX 工具（${details}）。` : details);
+        setMessage(/cannot nest pgfmatrix environments/iu.test(details)
+          ? details + " 请把内层 TikZ 矩阵移出外层矩阵，或先在导言区用保存盒排版，再在单元格中插入保存盒。"
+          : /(?:spawn|ENOENT)/iu.test(details) ? `服务器未能启动 TeX 工具（${details}）。` : details);
       });
     }, 350);
     return () => { window.clearTimeout(timer); controller.abort(); };

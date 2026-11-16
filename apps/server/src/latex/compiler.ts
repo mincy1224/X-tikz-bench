@@ -9,7 +9,7 @@ import { repairLegacyRgbOptions } from "../../../../packages/core/src/tex/legacy
 import { citationLinkPreamble, createReferencesDocument } from "./citation-links.js";
 import { extractObjectMarkers, type ObjectMarker } from "./object-markers.js";
 import { extractTexEnvironment, inferredMathPackages, withDefaultPackages } from "../../../../packages/core/src/tex/environment.js";
-import { DEFAULT_PROJECT_FONT, PROJECT_PALETTE_BLOCK, withoutProjectFontBlock, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
+import { CUSTOM_PREAMBLE_BLOCK, DEFAULT_PROJECT_FONT, PROJECT_PALETTE_BLOCK, withoutProjectFontBlock, withoutProjectPalette } from "../../../../packages/core/src/tex/project-source.js";
 
 export type LatexDiagnostic = { file: string; line: number; message: string };
 export type CompileResult = { svg: string; log: string; diagnostics: LatexDiagnostic[]; markers: ObjectMarker[] };
@@ -287,7 +287,9 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
   if (environment.completeDocument) {
     const missing = mathPackages.filter((name) => !explicit.has(name)).map((name) => `\\usepackage{${name}}`).join("\n");
     const additions = [missing, font].filter(Boolean).join("\n");
-    return additions ? source.slice(0, environment.insertionOffset) + "\n" + additions + "\n" + source.slice(environment.insertionOffset) : source;
+    const customOffset = CUSTOM_PREAMBLE_BLOCK.exec(source.slice(0, environment.prefixEnd))?.index;
+    const offset = customOffset ?? environment.insertionOffset;
+    return additions ? source.slice(0, offset) + "\n" + additions + "\n" + source.slice(offset) : source;
   }
   const defaults: { name: string; options?: string }[] = [{ name: "tikz" }, ...mathPackages.map((name) => ({ name }))];
   if (profile === "xelatex" && /[\u3400-\u9fff]/u.test(source)) defaults.push({ name: "ctex", options: "fontset=fandol" });
@@ -295,7 +297,8 @@ export function createStandaloneDocument(source: string, requestedProfile: Compi
   const plots = /\\begin\{(?:axis|groupplot|semilogxaxis|semilogyaxis|loglogaxis)\}/u.test(source);
   if (plots) defaults.push({ name: "pgfplots" });
   if (/\\begin\{circuitikz\}/u.test(source)) defaults.push({ name: "circuitikz" });
-  const preamble = withDefaultPackages(environment.preamble, defaults);
+  const customOffset = CUSTOM_PREAMBLE_BLOCK.exec(environment.preamble)?.index;
+  const preamble = withDefaultPackages(environment.preamble, defaults, customOffset);
   const plotSetup = plots ? `${explicit.has("pgfplots") ? "" : "\\pgfplotsset{compat=1.18}\n"}\\usepgfplotslibrary{statistics,groupplots}` : "";
   const content = /\\begin\{(?:tikzpicture|forest|circuitikz)\}/u.test(environment.body) ? environment.body : `\\begin{tikzpicture}\n${environment.body}\n\\end{tikzpicture}`;
   return `\\documentclass[border=2pt]{standalone}\n${preamble}\n${font}\n\\usetikzlibrary{arrows.meta,shapes,shapes.multipart,shapes.callouts,positioning,calc,matrix,fit,backgrounds,decorations.pathmorphing,decorations.markings,intersections,quotes}\n${plotSetup}\n\\begin{document}\n${content}\n\\end{document}\n`;

@@ -1,8 +1,27 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../apps/server/src/config";
 import { assertSafeSvg, createProjectConfig, createStandaloneDocument, parseLatexDiagnostics, resolveCompileProfile } from "../../apps/server/src/latex/compiler";
+import { splitProjectSource } from "../../packages/core/src/tex/project-source";
 
 const originalEnv = { ...process.env };
+
+it("keeps custom commands and saved TikZ boxes in the preamble through compilation and export", () => {
+  const source = String.raw`% x-tikz-bench: custom preamble start
+\DeclareMathOperator{\rank}{rank}
+\newsavebox{\innerpicture}
+\AtBeginDocument{\sbox{\innerpicture}{\begin{tikzpicture}\node {Inside};\end{tikzpicture}}}
+% x-tikz-bench: custom preamble end
+\begin{tikzpicture}
+\node {\usebox{\innerpicture} \(\rank A\)};
+\end{tikzpicture}`;
+  const config = createProjectConfig(source);
+  expect(config).toMatch(/\\usepackage\{amsmath\}[\s\S]*\\DeclareMathOperator/u);
+  expect(config).toContain("\\newsavebox{\\innerpicture}");
+  expect(config).not.toContain("\\rank A");
+  const document = createStandaloneDocument(source, "xelatex", true);
+  expect(splitProjectSource(document)?.body).toContain("\\rank A");
+  expect(splitProjectSource(document)?.prefix).toContain("\\AtBeginDocument");
+});
 
 it("copies a reusable project preamble with dependencies, palette and citation settings", () => {
   const source = String.raw`% x-tikz-bench: palette start

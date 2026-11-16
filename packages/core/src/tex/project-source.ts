@@ -12,6 +12,8 @@ export function withoutProjectFontBlock(source: string): string {
 }
 
 export const PROJECT_PALETTE_BLOCK = /^% x-tikz-bench: palette start\r?\n([\s\S]*?)^% x-tikz-bench: palette end(?:\r?\n|$)/mu;
+export const CUSTOM_PREAMBLE_MARKER = "% x-tikz-bench: custom preamble start";
+export const CUSTOM_PREAMBLE_BLOCK = /^% x-tikz-bench: custom preamble start\r?\n([\s\S]*?)^% x-tikz-bench: custom preamble end(?:\r?\n|$)/mu;
 
 export function withoutProjectPalette(source: string): string {
   return source.replace(new RegExp(PROJECT_PALETTE_BLOCK.source, "gmu"), "");
@@ -27,7 +29,8 @@ export function projectPaletteColors(palette: string): Readonly<Record<string, s
 
 /** Split a single picture at its real environment boundaries. */
 export function splitProjectSource(source: string): { body: string; prefix: string; suffix: string } | null {
-  const pictures = scanTikzFigures(source).filter((figure) => !figure.isTemplate);
+  const drawingSource = source.replace(CUSTOM_PREAMBLE_BLOCK, (block) => block.replace(/[^\r\n]/g, " "));
+  const pictures = scanTikzFigures(drawingSource).filter((figure) => !figure.isTemplate);
   if (pictures.length !== 1) return null;
   const picture = pictures[0];
   const options = readTexGroup(source, skipTexSpace(source, picture.beginSpan.to), "[", "]");

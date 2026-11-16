@@ -188,14 +188,14 @@ export function inferredMathPackages(source: string, environment = extractTexEnv
 
 /** Load defaults only where they are needed, after the user's preceding package
  * declarations. In particular, xcolor options must precede TikZ's xcolor load. */
-export function withDefaultPackages(preamble: string, defaults: readonly { name: string; options?: string }[]): string {
+export function withDefaultPackages(preamble: string, defaults: readonly { name: string; options?: string }[], fallbackOffset = preamble.length): string {
   const commands = scanTexCommands(preamble);
   const explicit = new Set(commands.filter((command) => ["usepackage", "RequirePackage"].includes(command.name)).flatMap((command) => splitTexList(command.arguments[0] ?? "")));
   const needs: Record<string, readonly string[]> = { tikz: ["usetikzlibrary", "tikzset", "tikzstyle", "forestset", "pgfplotsset", "usepgfplotslibrary", "ctikzset"], forest: ["forestset"], pgfplots: ["pgfplotsset", "usepgfplotslibrary"], circuitikz: ["ctikzset"] };
   const insertions = new Map<number, string[]>();
   for (const item of defaults) {
     if (explicit.has(item.name)) continue;
-    const offset = commands.find((command) => needs[item.name]?.includes(command.name))?.span.from ?? preamble.length;
+    const offset = Math.min(commands.find((command) => needs[item.name]?.includes(command.name))?.span.from ?? fallbackOffset, fallbackOffset);
     const values = insertions.get(offset) ?? [];
     values.push(`\\usepackage${item.options ? `[${item.options}]` : ""}{${item.name}}`); insertions.set(offset, values);
   }

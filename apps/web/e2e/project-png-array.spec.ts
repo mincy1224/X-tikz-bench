@@ -18,6 +18,35 @@ function transparentPng() {
   return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", header), chunk("IDAT", deflateSync(pixels)), chunk("IEND", Buffer.alloc(0))]);
 }
 
+test("canvas preamble persists separately and is included in Copy Config and the TeX archive", async ({ page, request }) => {
+  await gotoApp(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const body = String.raw`\draw (0,0) rectangle (2,1);`;
+  const preamble = String.raw`\DeclareMathOperator{\rank}{rank}`;
+  await setSource(page, body);
+  const button = page.getByRole("button", { name: "导言区", exact: true });
+  const input = page.getByRole("textbox", { name: "自定义 LaTeX 导言区" });
+  await button.click();
+  await input.fill(preamble);
+  await page.getByRole("button", { name: "保存导言区" }).click();
+  await expect(input).toBeHidden();
+  await page.reload();
+  await expect.poll(() => readSource(page)).toBe(body);
+  await button.click();
+  await expect(input).toHaveValue(preamble);
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "Copy Config" }).click();
+  await expect(page.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toContain(preamble);
+  expect(copied).not.toContain(body);
+  const projectPath = new URL(page.url()).pathname.replace(/^\/project\//u, "/api/projects/");
+  const file = await request.get(projectPath + "/export/tex");
+  const archive = unzipSync(await file.body());
+  expect(strFromU8(archive["main.tex"])).toContain(preamble);
+  expect(strFromU8(archive["figure.tikz"]).trim()).toBe(body);
+});
+
 test("PNG is editable, locked, persisted and packaged with the same source", async ({ page, request }) => {
   await gotoApp(page);
   const png = transparentPng(), key = `${createHash("sha256").update(png).digest("hex")}.png`;
