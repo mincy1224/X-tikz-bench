@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { editableObjects, fontWithSize, setObjectProperty as writeObjectProperty, tikzColor, type EditableObject } from "tikz-editor/edit/editable-objects";
 import { advancedObject, editForestStructure, setAdvancedContent } from "tikz-editor/edit/advanced-objects";
 import { formatFieldsForSelection, supportsFormatProperty, setGeometryField, type FormatField } from "tikz-editor/edit/format-inspector";
@@ -11,6 +11,8 @@ import { getSharedEditAnalysisView, getSharedEditAnalysisSession } from "../edit
 import { SourceEditTransaction } from "../store/source-edit-transaction";
 import { SidePanel } from "./SidePanel";
 import { ProjectPngProperties } from "./ProjectPngProperties";
+import { ProjectShapeProperties } from "./ProjectShapeProperties";
+import { ProjectIdContext } from "./project-png-images";
 import { Field, ColorField } from "./inspector-panel/FormatFields";
 import { ArrowSizeEditor } from "./inspector-panel/ArrowSizeEditor";
 import { useResizePreference } from "./resize-preference";
@@ -23,6 +25,7 @@ function Section({ title, children, advanced = false }: { title: string; childre
 
 
 export function FormatPanel() {
+  const projectId = useContext(ProjectIdContext);
   const inspection = useRef(useEditorStore.getState());
   // Keep committed properties during a gesture and while the new scene is
   // computing. Rebuilding against an old scene both wastes work and flashes
@@ -76,7 +79,7 @@ export function FormatPanel() {
   const arrowFields = allArrowFields.filter((field, index) => allArrowFields.findIndex((candidate) => candidate.side === field.side) === index);
   return <SidePanel><SidePanel.Header>设置格式{selected.length ? ` · ${selected.length > 1 ? `${selected.length} 个对象` : single?.label}` : ""}</SidePanel.Header>
     <SidePanel.Content className={css.panel}>
-      <ProjectPngProperties />
+      {projectId && <><ProjectPngProperties /><ProjectShapeProperties /></>}
       {painterMessage ? <p className={css.note} role="status">{painterMessage}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       {!selected.length ? <p className={css.note}>选择图形或组合以设置格式。拖动时显示边缘、中心和间距辅助线。</p> : <>

@@ -28,6 +28,17 @@ function displacement(before: string, after: string, id: string, x: number, y: n
 }
 
 describe("matrix and unified operation regressions", () => {
+  it("renders named TikZ matrix styles like their inline options", () => {
+    const options = "matrix of nodes,nodes in empty cells,nodes={draw=black,line width=.4pt,anchor=center,inner sep=0pt,outer sep=0pt,minimum width=14.9311pt,minimum height=16.3554pt},row sep=-.4pt,column sep=-.4pt";
+    const matrix = String.raw`\matrix[STYLE] (tb-array-1) at (-10.008307,4.053249) {A & B & & D & E & F \\};`;
+    const wrap = (body: string) => "\\begin{tikzpicture}\n" + body + "\n\\end{tikzpicture}";
+    const named = geometry(wrap("\\tikzset{tb array/.style={" + options + "}}\n" + matrix.replace("STYLE", "tb array")));
+    const inline = geometry(wrap(matrix.replace("STYLE", options)));
+    const cells = (result: ReturnType<typeof geometry>) => result.semantic.scene.elements.flatMap((element) =>
+      element.kind === "Path" && element.matrixCell ? [{ column: element.matrixCell.column, commands: element.commands, style: element.style }] : []);
+    expect(cells(named)).toHaveLength(6);
+    expect(cells(named)).toEqual(cells(inline));
+  });
   for (const anchor of ["center", "west", "north", "south east"]) for (const nested of [false, true]) for (const explicit of [false, true]) it(`moves anchor=${anchor}, nested=${nested}, explicit=${explicit}`, () => {
     const source = `\\begin{tikzpicture}${nested ? "\\begin{scope}[rotate=35,xscale=1.5,yscale=0.8]" : ""}\\matrix[matrix of nodes,matrix anchor=${anchor}] (M) ${explicit ? "at (1,2)" : ""} {A & LongText \\\\ B & C \\\\};${nested ? "\\end{scope}" : ""}\\end{tikzpicture}`;
     const id = nested ? "path:1" : "path:0";

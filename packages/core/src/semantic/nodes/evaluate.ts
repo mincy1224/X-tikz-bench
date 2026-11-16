@@ -518,7 +518,7 @@ export function evaluateNodeItem(
     ? nodeStyle
     : { ...nodeStyle, fontSize: normalizedNodeText.fontSizePt };
 
-  const matrixMode = resolveMatrixMode(effectiveNodeOptions);
+  const matrixMode = resolveMatrixMode(expandedNodeOptions);
   if (matrixMode.enabled) {
     return evaluateMatrixNodeItem({
       item,
@@ -532,8 +532,8 @@ export function evaluateNodeItem(
       nodeShape,
       nodeStyle,
       nodeStyleChain,
-      effectiveNodeOptions,
-      effectiveNodeLocalOptions,
+      effectiveNodeOptions: expandedNodeOptions,
+      effectiveNodeLocalOptions: expandedNodeLocalOptions,
       inheritedTransformScale: 1,
       resolvedPositioning,
       fallbackAnchor: resolvedPositioning.anchorOverride ?? anchor,

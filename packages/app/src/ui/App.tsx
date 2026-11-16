@@ -31,7 +31,6 @@ import { buildRepeatPreviewScene } from "./repeat-preview";
 import { useSettingsStore } from "../settings/useSettingsStore";
 import { getActiveEditorPlatform } from "../platform/current";
 import { ProjectCompilationContext, ProjectIdContext } from "./project-png-images";
-import { ProjectShapeProperties } from "./ProjectShapeProperties";
 import { ProjectPalette } from "./ProjectPalette";
 import { ProjectBibliography, type ProjectBibliographyData } from "./ProjectBibliography";
 import { ProjectBrand } from "./ProjectBrand";
@@ -2182,7 +2181,6 @@ export function App({ project, canvasNavigation }: AppProps = {}) {
       {project && showAssets ? <ProjectAssetPanel assets={project.assets} projectId={project.id} onChoose={() => pngInput.current?.click()}
         onPlace={placeAsset} onImport={(files) => { void importAssets(files); }} /> : null}
       {assetStatus ? <div className={css.compileNotice} role="status">{assetStatus}</div> : null}
-      {project ? <ProjectShapeProperties /> : null}
       {project && showProjectPalette ? <ProjectPalette palette={palette} onChange={project.onPaletteChange} /> : null}
       {project && showBibliography ? <ProjectBibliography bibliography={project.bibliography} onChange={project.onBibliographyChange} /> : null}
       {platform.menu?.usesNativeMenuBar ? null : (

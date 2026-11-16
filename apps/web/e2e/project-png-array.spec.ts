@@ -183,17 +183,18 @@ test("blank row vector cells accept text and move through the row with Tab", asy
   await gotoApp(page);
   await expect(page.getByTestId("menu-section-help")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Matrix", exact: true })).toHaveCount(0);
-  await setSource(page, String.raw`\begin{tikzpicture}
-\end{tikzpicture}`);
   await page.getByRole("button", { name: "Shape", exact: true }).click();
   await page.getByRole("spinbutton", { name: "数组格数" }).fill("5");
   await page.getByTestId("toolbar-array-choice-row-empty").click();
+  const viewport = page.getByTestId("canvas-viewport");
+  const beforeSelection = await viewport.boundingBox();
   await dragBetweenPoints(page, interactionLayer(page), { x: 180, y: 170 }, { x: 180, y: 170 });
   await page.mouse.up();
   await expect.poll(() => readSource(page)).toContain("nodes in empty cells");
   const cells = page.locator('[data-testid="canvas-svg-layer"] path[data-source-id*=":matrix-cell:"]');
   await expect(cells).toHaveCount(5);
   await expect(page.getByRole("group", { name: "数组属性" })).toContainText("数组布局");
+  expect((await viewport.boundingBox())?.y).toBe(beforeSelection?.y);
   const right = page.locator('[data-handle-kind="resize-element"][data-resize-role="top-right"]');
   await expect(right).toHaveCount(1);
   const handle = (await right.boundingBox())!;

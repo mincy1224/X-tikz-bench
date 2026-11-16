@@ -38,10 +38,6 @@
   white-space: nowrap;
 }
 .projectBar > * { flex-shrink: 0; }
-.projectObjectBar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--border); background: var(--bg-pane); }
-.projectObjectBar label { display: inline-flex; align-items: center; gap: 4px; }
-.projectObjectBar input { width: 66px; }
-.projectObjectBar input, .projectObjectBar button { color: var(--text); background: var(--bg-pane); border: 1px solid var(--border); border-radius: 4px; padding: 3px; }
 .projectPalette { background: var(--bg-pane); padding: 12px 18px; display: grid; gap: 10px; max-height: 210px; overflow: auto; border-bottom: 1px solid var(--border); }
 .projectBibliography { background: var(--bg-pane); padding: 14px 18px; display: grid; gap: 10px; max-height: 340px; overflow: auto; border-bottom: 1px solid var(--border); color: var(--text); }
 .bibliographyHeading, .bibliographyControls, .bibliographyKeys { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
